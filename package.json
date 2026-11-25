@@ -1,0 +1,17 @@
+{
+  "name": "pulsetask-saas",
+  "private": true,
+  "version": "1.0.0",
+  "description": "PulseTask - Modern SaaS Task Management Platform with Neon Cloud PostgreSQL",
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "node backend/server.js",
+    "build": "echo Vercel build ready"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "pg": "^8.12.0"
+  }
+}

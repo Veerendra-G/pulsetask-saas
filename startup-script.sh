@@ -1,0 +1,1123 @@
+#!/bin/bash
+# ==============================================================================
+# PulseTask Automated Google Cloud Free Tier VM Deployment Script
+# Automatically installs Nginx and deploys the PulseTask SaaS Web Application
+# ==============================================================================
+
+set -e
+
+echo "Updating system packages..."
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -y
+apt-get install -y nginx curl
+
+echo "Configuring Nginx web directory..."
+cat << 'EOF' > /var/www/html/index.html
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PulseTask | Modern SaaS Task Management Platform</title>
+  
+  <!-- Inter & Plus Jakarta Sans Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'Inter', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              200: '#c7d2fe',
+              300: '#a5b4fc',
+              400: '#818cf8',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+              800: '#3730a3',
+              900: '#312e81',
+              950: '#1e1b4b',
+            },
+            surface: {
+              light: '#f8fafc',
+              dark: '#0b0f19',
+              cardLight: '#ffffff',
+              cardDark: '#111827',
+              borderLight: '#e2e8f0',
+              borderDark: '#1f2937'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- React 18 and Babel Standalone for live JSX -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Canvas Confetti for task completion celebration -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    /* Custom Modern Scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(156, 163, 175, 0.4);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(156, 163, 175, 0.7);
+    }
+    .glass-card {
+      backdrop-filter: blur(12px);
+    }
+  </style>
+</head>
+<body class="h-full bg-slate-50 dark:bg-[#0b0f19] text-slate-800 dark:text-slate-100 transition-colors duration-200">
+  <div id="root" class="h-full"></div>
+
+  <!-- Main React Application Script -->
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef } = React;
+
+    // --- ICONS (SVG helpers) ---
+    const Icon = ({ name, className = "w-5 h-5", ...props }) => {
+      const icons = {
+        check: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />,
+        plus: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />,
+        search: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />,
+        trash: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />,
+        edit: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />,
+        calendar: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />,
+        tag: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />,
+        kanban: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />,
+        list: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />,
+        chart: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />,
+        sun: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />,
+        moon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />,
+        menu: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />,
+        close: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />,
+        inbox: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />,
+        sparkles: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />,
+        folder: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />,
+        checkCircle: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />,
+        clock: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />,
+        chevronDown: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />,
+        download: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />,
+        filter: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+      };
+
+      return (
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" {...props}>
+          {icons[name] || icons.check}
+        </svg>
+      );
+    };
+
+    // --- INITIAL SEED TASKS FOR PROFESSIONAL SAAS DEMO ---
+    const INITIAL_TASKS = [
+      {
+        id: "task-1",
+        title: "Deploy Q4 Infrastructure on AWS ECS Cluster",
+        description: "Configure autoscaling policies, target groups, and CloudWatch alert triggers for high-traffic peak.",
+        status: "in_progress",
+        priority: "urgent",
+        project: "Engineering",
+        dueDate: "2026-11-25",
+        tags: ["Cloud", "DevOps"],
+        createdAt: "2026-11-20"
+      },
+      {
+        id: "task-2",
+        title: "Finalize Design System Tokens & Dark Theme in Figma",
+        description: "Align color scales, typography ramps, and button states for the new v3 design overhaul.",
+        status: "completed",
+        priority: "high",
+        project: "Design",
+        dueDate: "2026-11-22",
+        tags: ["Figma", "UI/UX"],
+        createdAt: "2026-11-18"
+      },
+      {
+        id: "task-3",
+        title: "Implement Stripe Billing Webhook & Subscription Tiers",
+        description: "Add idempotency handling, invoice generation webhook listeners, and upgraded plan triggers.",
+        status: "in_progress",
+        priority: "urgent",
+        project: "Engineering",
+        dueDate: "2026-11-26",
+        tags: ["Payments", "Backend"],
+        createdAt: "2026-11-21"
+      },
+      {
+        id: "task-4",
+        title: "Launch Black Friday SaaS Growth Email Campaign",
+        description: "Set up behavioral drip sequence in Customer.io with A/B subject line testing.",
+        status: "todo",
+        priority: "medium",
+        project: "Marketing",
+        dueDate: "2026-11-28",
+        tags: ["Growth", "Email"],
+        createdAt: "2026-11-22"
+      },
+      {
+        id: "task-5",
+        title: "Security Audit & OAuth2 Token Refresh Verification",
+        description: "Review JWT expiry rotation, CSRF guards, and conduct automated static dependency scanning.",
+        status: "review",
+        priority: "high",
+        project: "Security",
+        dueDate: "2026-11-24",
+        tags: ["Auth", "Security"],
+        createdAt: "2026-11-19"
+      },
+      {
+        id: "task-6",
+        title: "Prepare Monthly Investor Update & MRR Metrics Deck",
+        description: "Aggregate Net Revenue Retention, CAC payback, and product roadmap milestones.",
+        status: "todo",
+        priority: "low",
+        project: "Executive",
+        dueDate: "2026-11-30",
+        tags: ["Finance", "Metrics"],
+        createdAt: "2026-11-22"
+      }
+    ];
+
+    const PROJECTS = [
+      { name: "All Projects", color: "bg-slate-500" },
+      { name: "Engineering", color: "bg-indigo-500" },
+      { name: "Design", color: "bg-pink-500" },
+      { name: "Marketing", color: "bg-amber-500" },
+      { name: "Security", color: "bg-red-500" },
+      { name: "Executive", color: "bg-emerald-500" }
+    ];
+
+    const STATUS_COLUMNS = [
+      { id: "todo", title: "Backlog / To Do", color: "border-slate-300 dark:border-slate-700", badge: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300" },
+      { id: "in_progress", title: "In Progress", color: "border-indigo-400 dark:border-indigo-600", badge: "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300" },
+      { id: "review", title: "In Review", color: "border-amber-400 dark:border-amber-600", badge: "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300" },
+      { id: "completed", title: "Completed", color: "border-emerald-400 dark:border-emerald-600", badge: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300" }
+    ];
+
+    const PRIORITIES = {
+      urgent: { label: "Urgent", color: "text-red-600 bg-red-50 border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-900/60" },
+      high: { label: "High", color: "text-amber-600 bg-amber-50 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-900/60" },
+      medium: { label: "Medium", color: "text-blue-600 bg-blue-50 border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-900/60" },
+      low: { label: "Low", color: "text-slate-600 bg-slate-50 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700" }
+    };
+
+    // --- MAIN APPLICATION COMPONENT ---
+    function App() {
+      // LocalStorage Persistence
+      const [tasks, setTasks] = useState(() => {
+        try {
+          const cached = localStorage.getItem("pulsetask_tasks_v2");
+          return cached ? JSON.parse(cached) : INITIAL_TASKS;
+        } catch {
+          return INITIAL_TASKS;
+        }
+      });
+
+      const [isDarkMode, setIsDarkMode] = useState(() => {
+        return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      });
+
+      // Filter & UI States
+      const [activeView, setActiveView] = useState("list"); // 'list' | 'kanban' | 'analytics'
+      const [selectedNav, setSelectedNav] = useState("all"); // 'all' | 'today' | 'upcoming' | 'completed'
+      const [selectedProject, setSelectedProject] = useState("All Projects");
+      const [priorityFilter, setPriorityFilter] = useState("all");
+      const [searchQuery, setSearchQuery] = useState("");
+      const [sortBy, setSortBy] = useState("dueDate");
+      const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+      const [isModalOpen, setIsModalOpen] = useState(false);
+      const [editingTask, setEditingTask] = useState(null);
+      const [toastMessage, setToastMessage] = useState(null);
+
+      // Save to localStorage
+      useEffect(() => {
+        try {
+          localStorage.setItem("pulsetask_tasks_v2", JSON.stringify(tasks));
+        } catch (e) {
+          console.error("Failed to save tasks", e);
+        }
+      }, [tasks]);
+
+      // Apply Dark Mode class to <html>
+      useEffect(() => {
+        if (isDarkMode) {
+          document.documentElement.classList.add("dark");
+        } else {
+          document.documentElement.classList.remove("dark");
+        }
+      }, [isDarkMode]);
+
+      // Toast notification helper
+      const showToast = (msg) => {
+        setToastMessage(msg);
+        setTimeout(() => setToastMessage(null), 3500);
+      };
+
+      // Task actions
+      const handleToggleComplete = (id) => {
+        setTasks(prev => prev.map(t => {
+          if (t.id === id) {
+            const nextStatus = t.status === "completed" ? "todo" : "completed";
+            if (nextStatus === "completed" && typeof confetti === "function") {
+              confetti({ particleCount: 50, spread: 60, origin: { y: 0.8 } });
+            }
+            return { ...t, status: nextStatus };
+          }
+          return t;
+        }));
+      };
+
+      const handleSaveTask = (taskData) => {
+        if (editingTask) {
+          setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, ...taskData } : t));
+          showToast("Task updated successfully");
+        } else {
+          const newTask = {
+            id: "task-" + Date.now(),
+            ...taskData,
+            createdAt: new Date().toISOString().split("T")[0]
+          };
+          setTasks(prev => [newTask, ...prev]);
+          showToast("New task created");
+        }
+        setIsModalOpen(false);
+        setEditingTask(null);
+      };
+
+      const handleDeleteTask = (id) => {
+        const deleted = tasks.find(t => t.id === id);
+        setTasks(prev => prev.filter(t => t.id !== id));
+        showToast(`Deleted "${deleted?.title?.slice(0, 20)}..."`);
+      };
+
+      const handleStatusChange = (id, newStatus) => {
+        setTasks(prev => prev.map(t => t.id === id ? { ...t, status: newStatus } : t));
+      };
+
+      const handleClearCompleted = () => {
+        if (window.confirm("Clear all completed tasks?")) {
+          setTasks(prev => prev.filter(t => t.status !== "completed"));
+          showToast("Cleared completed tasks");
+        }
+      };
+
+      // Export to JSON
+      const handleExportJSON = () => {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(tasks, null, 2));
+        const downloadAnchor = document.createElement("a");
+        downloadAnchor.setAttribute("href", dataStr);
+        downloadAnchor.setAttribute("download", `pulsetask-backup-${new Date().toISOString().split("T")[0]}.json`);
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.click();
+        downloadAnchor.remove();
+        showToast("Exported tasks to JSON");
+      };
+
+      // Filtered Tasks calculation
+      const filteredTasks = useMemo(() => {
+        const todayStr = new Date().toISOString().split("T")[0];
+
+        return tasks.filter(task => {
+          // Navigation filter
+          if (selectedNav === "today" && task.dueDate !== todayStr) return false;
+          if (selectedNav === "upcoming" && (!task.dueDate || task.dueDate <= todayStr)) return false;
+          if (selectedNav === "completed" && task.status !== "completed") return false;
+
+          // Project filter
+          if (selectedProject !== "All Projects" && task.project !== selectedProject) return false;
+
+          // Priority filter
+          if (priorityFilter !== "all" && task.priority !== priorityFilter) return false;
+
+          // Search query
+          if (searchQuery.trim()) {
+            const q = searchQuery.toLowerCase();
+            const matchTitle = task.title.toLowerCase().includes(q);
+            const matchDesc = task.description.toLowerCase().includes(q);
+            const matchTag = task.tags?.some(tag => tag.toLowerCase().includes(q));
+            if (!matchTitle && !matchDesc && !matchTag) return false;
+          }
+
+          return true;
+        }).sort((a, b) => {
+          if (sortBy === "dueDate") {
+            if (!a.dueDate) return 1;
+            if (!b.dueDate) return -1;
+            return a.dueDate.localeCompare(b.dueDate);
+          }
+          if (sortBy === "priority") {
+            const weights = { urgent: 4, high: 3, medium: 2, low: 1 };
+            return (weights[b.priority] || 0) - (weights[a.priority] || 0);
+          }
+          if (sortBy === "title") {
+            return a.title.localeCompare(b.title);
+          }
+          return b.createdAt.localeCompare(a.createdAt);
+        });
+      }, [tasks, selectedNav, selectedProject, priorityFilter, searchQuery, sortBy]);
+
+      // Quick KPI Stats
+      const stats = useMemo(() => {
+        const total = tasks.length;
+        const completed = tasks.filter(t => t.status === "completed").length;
+        const inProgress = tasks.filter(t => t.status === "in_progress").length;
+        const todo = tasks.filter(t => t.status === "todo").length;
+        const todayStr = new Date().toISOString().split("T")[0];
+        const overdue = tasks.filter(t => t.status !== "completed" && t.dueDate && t.dueDate < todayStr).length;
+        const rate = total === 0 ? 0 : Math.round((completed / total) * 100);
+
+        return { total, completed, inProgress, todo, overdue, rate };
+      }, [tasks]);
+
+      return (
+        <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-[#0b0f19]">
+
+          {/* ===================== SIDEBAR ===================== */}
+          <aside className={`${isSidebarOpen ? "w-64" : "w-20"} flex-shrink-0 bg-white dark:bg-[#111827] border-r border-slate-200 dark:border-slate-800 flex flex-col justify-between transition-all duration-300 z-30`}>
+            <div>
+              {/* Logo & App Brand */}
+              <div className="h-16 flex items-center justify-between px-5 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center space-x-3 overflow-hidden">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-400 flex items-center justify-center text-white shadow-lg shadow-brand-500/30 flex-shrink-0">
+                    <Icon name="sparkles" className="w-5 h-5" />
+                  </div>
+                  {isSidebarOpen && (
+                    <div className="flex flex-col">
+                      <span className="font-extrabold text-base tracking-tight bg-gradient-to-r from-slate-900 to-slate-700 dark:from-white dark:to-slate-300 bg-clip-text text-transparent">PulseTask</span>
+                      <span className="text-[10px] text-brand-600 dark:text-brand-400 font-semibold uppercase tracking-wider">Enterprise SaaS</span>
+                    </div>
+                  )}
+                </div>
+                <button 
+                  onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  title="Toggle Sidebar"
+                >
+                  <Icon name="menu" className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Workspace Selector */}
+              {isSidebarOpen && (
+                <div className="p-3">
+                  <div className="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between">
+                    <div className="flex items-center space-x-2.5">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-xs">
+                        AC
+                      </div>
+                      <div className="text-left">
+                        <div className="text-xs font-semibold text-slate-900 dark:text-white leading-tight">Acme Global</div>
+                        <div className="text-[10px] text-slate-400">Team Workspace</div>
+                      </div>
+                    </div>
+                    <span className="px-1.5 py-0.5 text-[9px] font-bold bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300 rounded uppercase">Pro</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Main Navigation Views */}
+              <div className="px-3 py-2 space-y-1">
+                {[
+                  { id: "all", label: "All Tasks", icon: "inbox", count: stats.total },
+                  { id: "today", label: "Due Today", icon: "calendar", count: tasks.filter(t => t.dueDate === new Date().toISOString().split("T")[0]).length },
+                  { id: "upcoming", label: "Upcoming", icon: "clock", count: tasks.filter(t => t.dueDate && t.dueDate > new Date().toISOString().split("T")[0]).length },
+                  { id: "completed", label: "Completed", icon: "checkCircle", count: stats.completed },
+                ].map(item => (
+                  <button
+                    key={item.id}
+                    onClick={() => { setSelectedNav(item.id); setSelectedProject("All Projects"); }}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-all ${
+                      selectedNav === item.id 
+                        ? "bg-brand-50 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300 font-semibold shadow-sm"
+                        : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <Icon name={item.icon} className="w-4 h-4" />
+                      {isSidebarOpen && <span>{item.label}</span>}
+                    </div>
+                    {isSidebarOpen && (
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                        selectedNav === item.id
+                          ? "bg-brand-200/60 dark:bg-brand-900 text-brand-800 dark:text-brand-200"
+                          : "bg-slate-100 dark:bg-slate-800 text-slate-500"
+                      }`}>
+                        {item.count}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              {/* Projects List */}
+              {isSidebarOpen && (
+                <div className="px-3 pt-5 pb-2">
+                  <div className="flex items-center justify-between px-3 mb-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Projects</span>
+                    <button 
+                      onClick={() => { setEditingTask(null); setIsModalOpen(true); }}
+                      className="text-slate-400 hover:text-brand-600 dark:hover:text-brand-400"
+                      title="Add task to project"
+                    >
+                      <Icon name="plus" className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="space-y-0.5">
+                    {PROJECTS.map(proj => (
+                      <button
+                        key={proj.name}
+                        onClick={() => setSelectedProject(proj.name)}
+                        className={`w-full flex items-center space-x-2.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                          selectedProject === proj.name
+                            ? "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white font-semibold"
+                            : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/40"
+                        }`}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${proj.color}`}></span>
+                        <span className="truncate">{proj.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Sidebar Footer (Theme Toggle & Profile) */}
+            <div className="p-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+              <div className="flex items-center justify-between">
+                {isSidebarOpen && (
+                  <button
+                    onClick={handleExportJSON}
+                    className="flex items-center space-x-1.5 text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 px-2 py-1 rounded"
+                    title="Export Backup"
+                  >
+                    <Icon name="download" className="w-3.5 h-3.5" />
+                    <span>Backup</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => setIsDarkMode(!isDarkMode)}
+                  className="p-2 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs flex items-center space-x-2 ml-auto"
+                  title="Toggle Theme"
+                >
+                  <Icon name={isDarkMode ? "sun" : "moon"} className="w-4 h-4 text-amber-500" />
+                  {isSidebarOpen && <span className="text-xs">{isDarkMode ? "Light" : "Dark"}</span>}
+                </button>
+              </div>
+
+              {isSidebarOpen && (
+                <div className="flex items-center space-x-3 pt-2">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xs ring-2 ring-white dark:ring-slate-900">
+                    VG
+                  </div>
+                  <div className="truncate">
+                    <div className="text-xs font-semibold text-slate-900 dark:text-white truncate">Veerendra Gandla</div>
+                    <div className="text-[10px] text-slate-400 truncate">Lead Developer</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </aside>
+
+          {/* ===================== MAIN CONTENT AREA ===================== */}
+          <main className="flex-1 flex flex-col h-full overflow-hidden">
+
+            {/* Top Navbar */}
+            <header className="h-16 bg-white dark:bg-[#111827] border-b border-slate-200 dark:border-slate-800 px-6 flex items-center justify-between flex-shrink-0 z-20">
+              {/* Search Bar */}
+              <div className="flex items-center flex-1 max-w-md">
+                <div className="relative w-full">
+                  <Icon name="search" className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search tasks, descriptions, or tags... (Press /)"
+                    className="w-full bg-slate-100 dark:bg-slate-800/80 text-sm text-slate-900 dark:text-slate-100 pl-10 pr-4 py-2 rounded-xl border border-transparent focus:border-brand-500 focus:bg-white dark:focus:bg-[#0b0f19] outline-none transition-all placeholder:text-slate-400"
+                  />
+                  {searchQuery && (
+                    <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                      <Icon name="close" className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Right Action Tools: View Switcher, Filter, New Task */}
+              <div className="flex items-center space-x-3 ml-4">
+                {/* View Switcher Tabs (List / Kanban / Analytics) */}
+                <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-xl flex items-center space-x-1 border border-slate-200/60 dark:border-slate-700/60">
+                  <button
+                    onClick={() => setActiveView("list")}
+                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      activeView === "list"
+                        ? "bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm"
+                        : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                    }`}
+                  >
+                    <Icon name="list" className="w-3.5 h-3.5" />
+                    <span>List</span>
+                  </button>
+                  <button
+                    onClick={() => setActiveView("kanban")}
+                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      activeView === "kanban"
+                        ? "bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm"
+                        : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                    }`}
+                  >
+                    <Icon name="kanban" className="w-3.5 h-3.5" />
+                    <span>Board</span>
+                  </button>
+                  <button
+                    onClick={() => setActiveView("analytics")}
+                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      activeView === "analytics"
+                        ? "bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm"
+                        : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                    }`}
+                  >
+                    <Icon name="chart" className="w-3.5 h-3.5" />
+                    <span>Analytics</span>
+                  </button>
+                </div>
+
+                {/* Priority Filter */}
+                <select
+                  value={priorityFilter}
+                  onChange={(e) => setPriorityFilter(e.target.value)}
+                  className="bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 px-3 py-2 rounded-xl border border-slate-200/60 dark:border-slate-700/60 outline-none"
+                >
+                  <option value="all">All Priorities</option>
+                  <option value="urgent">Urgent</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+
+                {/* Sort Option */}
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 px-3 py-2 rounded-xl border border-slate-200/60 dark:border-slate-700/60 outline-none hidden sm:block"
+                >
+                  <option value="dueDate">Sort: Due Date</option>
+                  <option value="priority">Sort: Priority</option>
+                  <option value="title">Sort: Alphabetical</option>
+                  <option value="createdAt">Sort: Created Date</option>
+                </select>
+
+                {/* Primary New Task Button */}
+                <button
+                  onClick={() => { setEditingTask(null); setIsModalOpen(true); }}
+                  className="flex items-center space-x-2 bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-semibold text-sm px-4 py-2 rounded-xl shadow-md shadow-brand-500/25 transition-all transform active:scale-95"
+                >
+                  <Icon name="plus" className="w-4 h-4" />
+                  <span className="hidden sm:inline">New Task</span>
+                </button>
+              </div>
+            </header>
+
+            {/* Sub-Header KPI Metrics Bar */}
+            <div className="bg-white/80 dark:bg-[#111827]/80 backdrop-blur-md border-b border-slate-200/70 dark:border-slate-800/80 px-6 py-3 flex items-center justify-between flex-wrap gap-3 flex-shrink-0">
+              <div className="flex items-center space-x-6">
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Tasks</span>
+                  <div className="text-base font-extrabold text-slate-900 dark:text-white leading-none mt-0.5">{stats.total}</div>
+                </div>
+                <div className="h-7 w-px bg-slate-200 dark:bg-slate-800"></div>
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Completion</span>
+                  <div className="text-base font-extrabold text-emerald-600 dark:text-emerald-400 leading-none mt-0.5">{stats.rate}%</div>
+                </div>
+                <div className="h-7 w-px bg-slate-200 dark:bg-slate-800"></div>
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">In Progress</span>
+                  <div className="text-base font-extrabold text-brand-600 dark:text-brand-400 leading-none mt-0.5">{stats.inProgress}</div>
+                </div>
+                {stats.overdue > 0 && (
+                  <>
+                    <div className="h-7 w-px bg-slate-200 dark:bg-slate-800"></div>
+                    <div>
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-red-500">Overdue</span>
+                      <div className="text-base font-extrabold text-red-600 dark:text-red-400 leading-none mt-0.5">{stats.overdue}</div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Quick Actions */}
+              <div className="flex items-center space-x-2">
+                {stats.completed > 0 && (
+                  <button
+                    onClick={handleClearCompleted}
+                    className="text-xs text-slate-500 hover:text-red-600 dark:hover:text-red-400 px-3 py-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    Clear {stats.completed} Completed
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Content Views: LIST, KANBAN, or ANALYTICS */}
+            <div className="flex-1 overflow-y-auto p-6">
+              
+              {/* ================= VIEW 1: LIST VIEW ================= */}
+              {activeView === "list" && (
+                <div className="max-w-5xl mx-auto space-y-3">
+                  {filteredTasks.length === 0 ? (
+                    <div className="text-center py-20 bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-slate-300 dark:border-slate-800">
+                      <div className="w-14 h-14 mx-auto rounded-full bg-brand-50 dark:bg-brand-950/60 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-4">
+                        <Icon name="checkCircle" className="w-8 h-8" />
+                      </div>
+                      <h3 className="text-lg font-bold text-slate-900 dark:text-white">All Clean & Organized!</h3>
+                      <p className="text-sm text-slate-500 max-w-sm mx-auto mt-1">No tasks matched your filter criteria or you've completed everything on this list.</p>
+                      <button
+                        onClick={() => { setEditingTask(null); setIsModalOpen(true); }}
+                        className="mt-5 inline-flex items-center space-x-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow"
+                      >
+                        <Icon name="plus" className="w-4 h-4" />
+                        <span>Create Task</span>
+                      </button>
+                    </div>
+                  ) : (
+                    filteredTasks.map(task => {
+                      const isDone = task.status === "completed";
+                      const isOverdue = task.dueDate && task.dueDate < new Date().toISOString().split("T")[0] && !isDone;
+
+                      return (
+                        <div
+                          key={task.id}
+                          className={`group bg-white dark:bg-[#111827] border rounded-2xl p-4 shadow-sm hover:shadow-md transition-all flex items-start sm:items-center justify-between gap-4 ${
+                            isDone 
+                              ? "border-slate-200/60 dark:border-slate-800/60 opacity-60 bg-slate-50/50 dark:bg-slate-900/30"
+                              : isOverdue
+                                ? "border-red-200 dark:border-red-900/50 bg-red-50/20"
+                                : "border-slate-200 dark:border-slate-800 hover:border-brand-300 dark:hover:border-brand-700"
+                          }`}
+                        >
+                          {/* Checkbox & Task Information */}
+                          <div className="flex items-start sm:items-center space-x-3.5 flex-1 min-w-0">
+                            {/* Checkmark Button */}
+                            <button
+                              onClick={() => handleToggleComplete(task.id)}
+                              className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all flex-shrink-0 mt-0.5 sm:mt-0 ${
+                                isDone 
+                                  ? "bg-emerald-500 border-emerald-500 text-white shadow-sm"
+                                  : "border-slate-300 dark:border-slate-600 hover:border-brand-500 dark:hover:border-brand-400 bg-white dark:bg-slate-800"
+                              }`}
+                            >
+                              {isDone && <Icon name="check" className="w-3.5 h-3.5" />}
+                            </button>
+
+                            {/* Title, Description & Metadata */}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center space-x-2">
+                                <h4 className={`text-sm font-semibold truncate ${
+                                  isDone 
+                                    ? "line-through text-slate-400 dark:text-slate-500"
+                                    : "text-slate-900 dark:text-white"
+                                }`}>
+                                  {task.title}
+                                </h4>
+                              </div>
+                              {task.description && (
+                                <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                                  {task.description}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Badges: Project, Priority, Due Date, Actions */}
+                          <div className="flex items-center space-x-2.5 flex-wrap sm:flex-nowrap justify-end">
+                            {/* Project Chip */}
+                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                              {task.project}
+                            </span>
+
+                            {/* Priority Pill */}
+                            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${PRIORITIES[task.priority]?.color || PRIORITIES.medium.color}`}>
+                              {PRIORITIES[task.priority]?.label || "Medium"}
+                            </span>
+
+                            {/* Due Date Indicator */}
+                            {task.dueDate && (
+                              <div className={`flex items-center space-x-1 text-xs px-2 py-0.5 rounded-md font-medium ${
+                                isOverdue 
+                                  ? "text-red-600 bg-red-100 dark:bg-red-950/60 dark:text-red-400 font-bold" 
+                                  : "text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800"
+                              }`}>
+                                <Icon name="calendar" className="w-3 h-3" />
+                                <span>{task.dueDate}</span>
+                              </div>
+                            )}
+
+                            {/* Action Buttons: Edit & Delete */}
+                            <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center space-x-1 ml-2">
+                              <button
+                                onClick={() => { setEditingTask(task); setIsModalOpen(true); }}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                title="Edit"
+                              >
+                                <Icon name="edit" className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteTask(task.id)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
+                                title="Delete"
+                              >
+                                <Icon name="trash" className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+
+              {/* ================= VIEW 2: KANBAN BOARD ================= */}
+              {activeView === "kanban" && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 h-full">
+                  {STATUS_COLUMNS.map(col => {
+                    const colTasks = filteredTasks.filter(t => t.status === col.id);
+
+                    return (
+                      <div key={col.id} className="flex flex-col bg-slate-100/70 dark:bg-slate-900/40 rounded-2xl p-4 border border-slate-200/70 dark:border-slate-800">
+                        {/* Column Header */}
+                        <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200 dark:border-slate-800">
+                          <div className="flex items-center space-x-2">
+                            <h3 className="font-bold text-sm text-slate-800 dark:text-slate-200">{col.title}</h3>
+                            <span className={`text-xs px-2 py-0.2 rounded-full font-bold ${col.badge}`}>
+                              {colTasks.length}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => { setEditingTask({ status: col.id }); setIsModalOpen(true); }}
+                            className="text-slate-400 hover:text-brand-600 dark:hover:text-brand-400"
+                            title="Add task in this column"
+                          >
+                            <Icon name="plus" className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {/* Column Cards */}
+                        <div className="space-y-3 flex-1 overflow-y-auto pr-1">
+                          {colTasks.map(task => (
+                            <div
+                              key={task.id}
+                              className="bg-white dark:bg-[#111827] p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all group"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${PRIORITIES[task.priority]?.color}`}>
+                                  {task.priority}
+                                </span>
+                                <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center space-x-1">
+                                  <button onClick={() => { setEditingTask(task); setIsModalOpen(true); }} className="text-slate-400 hover:text-brand-500">
+                                    <Icon name="edit" className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button onClick={() => handleDeleteTask(task.id)} className="text-slate-400 hover:text-red-500">
+                                    <Icon name="trash" className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              <h5 className="font-semibold text-xs text-slate-900 dark:text-white mt-2 leading-snug">
+                                {task.title}
+                              </h5>
+
+                              {task.description && (
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">
+                                  {task.description}
+                                </p>
+                              )}
+
+                              <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+                                <span className="font-medium text-slate-600 dark:text-slate-400">{task.project}</span>
+                                {task.dueDate && (
+                                  <span className="flex items-center space-x-1 font-medium">
+                                    <Icon name="calendar" className="w-3 h-3" />
+                                    <span>{task.dueDate}</span>
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Stage Transition Quick Select */}
+                              <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+                                <select
+                                  value={task.status}
+                                  onChange={(e) => handleStatusChange(task.id, e.target.value)}
+                                  className="w-full text-[10px] font-semibold bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 py-1 px-2 rounded-lg border border-slate-200 dark:border-slate-700 outline-none"
+                                >
+                                  <option value="todo">Move to To Do</option>
+                                  <option value="in_progress">Move to In Progress</option>
+                                  <option value="review">Move to In Review</option>
+                                  <option value="completed">Move to Completed</option>
+                                </select>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* ================= VIEW 3: ANALYTICS DASHBOARD ================= */}
+              {activeView === "analytics" && (
+                <div className="max-w-5xl mx-auto space-y-6">
+                  {/* Top Analytics Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="bg-white dark:bg-[#111827] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                      <span className="text-xs font-semibold text-slate-400">Completion Rate</span>
+                      <div className="text-3xl font-extrabold text-brand-600 dark:text-brand-400 mt-2">{stats.rate}%</div>
+                      <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full mt-3 overflow-hidden">
+                        <div className="bg-gradient-to-r from-brand-500 to-indigo-500 h-full rounded-full transition-all duration-500" style={{ width: `${stats.rate}%` }}></div>
+                      </div>
+                    </div>
+                    <div className="bg-white dark:bg-[#111827] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                      <span className="text-xs font-semibold text-slate-400">Total Velocity</span>
+                      <div className="text-3xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-2">{stats.completed} <span className="text-sm font-normal text-slate-400">/ {stats.total}</span></div>
+                      <span className="text-[11px] text-emerald-500 font-semibold mt-1 inline-block">↑ Active sprint productivity</span>
+                    </div>
+                    <div className="bg-white dark:bg-[#111827] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                      <span className="text-xs font-semibold text-slate-400">In Active Flight</span>
+                      <div className="text-3xl font-extrabold text-indigo-600 dark:text-indigo-400 mt-2">{stats.inProgress}</div>
+                      <span className="text-[11px] text-slate-400 font-medium mt-1 inline-block">Tasks currently worked on</span>
+                    </div>
+                    <div className="bg-white dark:bg-[#111827] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                      <span className="text-xs font-semibold text-slate-400">Overdue SLA Warning</span>
+                      <div className="text-3xl font-extrabold text-red-600 dark:text-red-400 mt-2">{stats.overdue}</div>
+                      <span className="text-[11px] text-red-500 font-semibold mt-1 inline-block">Needs immediate attention</span>
+                    </div>
+                  </div>
+
+                  {/* Breakdown by Projects */}
+                  <div className="bg-white dark:bg-[#111827] p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                    <h3 className="font-bold text-base text-slate-900 dark:text-white mb-4">Task Distribution by Project</h3>
+                    <div className="space-y-4">
+                      {PROJECTS.filter(p => p.name !== "All Projects").map(p => {
+                        const count = tasks.filter(t => t.project === p.name).length;
+                        const pct = stats.total === 0 ? 0 : Math.round((count / stats.total) * 100);
+
+                        return (
+                          <div key={p.name}>
+                            <div className="flex justify-between text-xs font-semibold mb-1">
+                              <span className="text-slate-700 dark:text-slate-300 flex items-center space-x-2">
+                                <span className={`w-2.5 h-2.5 rounded-full ${p.color}`}></span>
+                                <span>{p.name}</span>
+                              </span>
+                              <span className="text-slate-500">{count} tasks ({pct}%)</span>
+                            </div>
+                            <div className="w-full bg-slate-100 dark:bg-slate-800 h-2.5 rounded-full overflow-hidden">
+                              <div className={`${p.color} h-full rounded-full transition-all duration-500`} style={{ width: `${pct}%` }}></div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+            </div>
+          </main>
+
+          {/* ===================== NEW / EDIT TASK MODAL ===================== */}
+          {isModalOpen && (
+            <TaskModal
+              task={editingTask}
+              onClose={() => { setIsModalOpen(false); setEditingTask(null); }}
+              onSave={handleSaveTask}
+            />
+          )}
+
+          {/* ===================== TOAST NOTIFICATION ===================== */}
+          {toastMessage && (
+            <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white dark:bg-white dark:text-slate-900 px-4 py-2.5 rounded-xl shadow-xl flex items-center space-x-2.5 text-xs font-semibold animate-bounce">
+              <Icon name="checkCircle" className="w-4 h-4 text-emerald-400 dark:text-emerald-600" />
+              <span>{toastMessage}</span>
+            </div>
+          )}
+
+        </div>
+      );
+    }
+
+    // --- MODAL COMPONENT ---
+    function TaskModal({ task, onClose, onSave }) {
+      const [title, setTitle] = useState(task?.title || "");
+      const [description, setDescription] = useState(task?.description || "");
+      const [priority, setPriority] = useState(task?.priority || "medium");
+      const [project, setProject] = useState(task?.project || "Engineering");
+      const [status, setStatus] = useState(task?.status || "todo");
+      const [dueDate, setDueDate] = useState(task?.dueDate || new Date().toISOString().split("T")[0]);
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!title.trim()) return;
+        onSave({ title: title.trim(), description: description.trim(), priority, project, status, dueDate });
+      };
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white dark:bg-[#111827] w-full max-w-lg rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="font-bold text-lg text-slate-900 dark:text-white">
+                {task?.id ? "Edit Task" : "Create New Task"}
+              </h3>
+              <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                <Icon name="close" className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Title *</label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="e.g. Implement Webhook Handlers"
+                  className="w-full bg-slate-50 dark:bg-slate-800 text-sm text-slate-900 dark:text-white px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 outline-none focus:border-brand-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Description</label>
+                <textarea
+                  rows="3"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Add context, subtasks, or architecture details..."
+                  className="w-full bg-slate-50 dark:bg-slate-800 text-sm text-slate-900 dark:text-white px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 outline-none focus:border-brand-500"
+                ></textarea>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Project</label>
+                  <select
+                    value={project}
+                    onChange={(e) => setProject(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-900 dark:text-white px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 outline-none"
+                  >
+                    <option value="Engineering">Engineering</option>
+                    <option value="Design">Design</option>
+                    <option value="Marketing">Marketing</option>
+                    <option value="Security">Security</option>
+                    <option value="Executive">Executive</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Priority</label>
+                  <select
+                    value={priority}
+                    onChange={(e) => setPriority(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-900 dark:text-white px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 outline-none"
+                  >
+                    <option value="urgent">🔴 Urgent</option>
+                    <option value="high">🟠 High</option>
+                    <option value="medium">🔵 Medium</option>
+                    <option value="low">⚪ Low</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Status</label>
+                  <select
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-900 dark:text-white px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 outline-none"
+                  >
+                    <option value="todo">To Do</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="review">In Review</option>
+                    <option value="completed">Completed</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Due Date</label>
+                  <input
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-900 dark:text-white px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 text-xs font-semibold bg-brand-600 hover:bg-brand-500 text-white rounded-xl shadow-md shadow-brand-500/25"
+                >
+                  {task?.id ? "Save Changes" : "Create Task"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // Render the React Application
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
+
+EOF
+
+echo "Ensuring proper permissions and restarting Nginx..."
+chown -R www-data:www-data /var/www/html
+chmod -R 755 /var/www/html
+
+systemctl enable nginx
+systemctl restart nginx
+
+echo "=========================================================="
+echo " PulseTask React SaaS App is LIVE on Port 80! "
+echo "=========================================================="
