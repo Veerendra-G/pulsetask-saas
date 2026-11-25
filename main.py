@@ -2,21 +2,30 @@ import os
 import json
 import time
 from pathlib import Path
-from typing import List
-from fastapi import FastAPI, APIRouter, HTTPException, status, Request
+from typing import List, Optional
+from fastapi import FastAPI, APIRouter, HTTPException, status, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from psycopg2.extras import RealDictCursor
 
 from database import get_db_connection, init_db
-from models import TaskCreate, TaskUpdate, TaskResponse
+from models import (
+    TaskCreate, TaskUpdate, TaskResponse,
+    UserRegister, UserLogin, UserResponse, AuthResponse
+)
+from auth import (
+    hash_password, verify_password, create_access_token,
+    get_current_user_optional, get_current_user_required
+)
 
 app = FastAPI(
     title="PulseTask FastAPI Backend",
-    description="High-performance Python FastAPI REST API connected to Neon Serverless PostgreSQL",
-    version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc"
+    description="Enterprise Python FastAPI SaaS backend connected to Neon Serverless PostgreSQL with JWT Authentication",
+    version="2.0.0",
+    docs_url=None,   # We define explicit handlers below for /docs and /api/docs
+    redoc_url=None,
+    openapi_url=None
 )
 
 # Enable CORS for React frontend (Vercel, localhost, mobile)
@@ -32,6 +41,22 @@ app.add_middleware(
 def on_startup():
     init_db()
 
+# --- Interactive Swagger Docs & OpenAPI Endpoints (support both /docs and /api/docs) ---
+@app.get("/openapi.json", include_in_schema=False)
+@app.get("/api/openapi.json", include_in_schema=False)
+def get_open_api_endpoint():
+    return JSONResponse(app.openapi())
+
+@app.get("/docs", include_in_schema=False)
+@app.get("/api/docs", include_in_schema=False)
+def swagger_ui():
+    return get_swagger_ui_html(openapi_url="/api/openapi.json", title="PulseTask API Docs")
+
+@app.get("/redoc", include_in_schema=False)
+@app.get("/api/redoc", include_in_schema=False)
+def redoc_ui():
+    return get_redoc_html(openapi_url="/api/openapi.json", title="PulseTask API ReDoc")
+
 # Create API Router to support both /api/... and direct /... calls
 router = APIRouter()
 
@@ -40,16 +65,132 @@ def health_check():
     return {
         "status": "ok",
         "service": "PulseTask FastAPI Backend",
+        "version": "2.0.0",
         "runtime": "Python 3.12",
-        "database": "Neon PostgreSQL"
+        "database": "Neon PostgreSQL",
+        "auth": "JWT + bcrypt enabled"
     }
 
-@router.get("/tasks", response_model=List[TaskResponse], tags=["Tasks"])
-def get_tasks():
+# ==========================================
+# --- Authentication Endpoints ---
+# ==========================================
+
+@router.post("/auth/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED, tags=["Authentication"])
+def register(user_data: UserRegister):
+    email = user_data.email.strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="A valid email address is required.")
+    if len(user_data.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
+
+    user_id = f"user-{int(time.time() * 1000)}"
+    hashed = hash_password(user_data.password)
+    name = (user_data.name or email.split("@")[0]).strip()
+
     try:
         conn = get_db_connection()
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT * FROM tasks ORDER BY created_at DESC;")
+            # Check if email already exists
+            cur.execute("SELECT id FROM users WHERE email = %s;", (email,))
+            if cur.fetchone():
+                conn.close()
+                raise HTTPException(status_code=400, detail="This email is already registered. Please sign in.")
+
+            cur.execute("""
+                INSERT INTO users (id, email, password_hash, name)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id, email, name, created_at;
+            """, (user_id, email, hashed, name))
+            user_row = cur.fetchone()
+            conn.commit()
+            conn.close()
+
+            token = create_access_token(user_id=user_row["id"], email=user_row["email"], name=user_row["name"])
+            return {
+                "token": token,
+                "token_type": "bearer",
+                "user": {
+                    "id": user_row["id"],
+                    "email": user_row["email"],
+                    "name": user_row["name"] or "",
+                    "createdAt": user_row["created_at"]
+                }
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
+
+@router.post("/auth/login", response_model=AuthResponse, tags=["Authentication"])
+def login(creds: UserLogin):
+    email = creds.email.strip().lower()
+    try:
+        conn = get_db_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM users WHERE email = %s;", (email,))
+            user_row = cur.fetchone()
+            conn.close()
+
+            if not user_row or not verify_password(creds.password, user_row["password_hash"]):
+                raise HTTPException(status_code=401, detail="Invalid email or password.")
+
+            token = create_access_token(user_id=user_row["id"], email=user_row["email"], name=user_row["name"])
+            return {
+                "token": token,
+                "token_type": "bearer",
+                "user": {
+                    "id": user_row["id"],
+                    "email": user_row["email"],
+                    "name": user_row["name"] or "",
+                    "createdAt": user_row["created_at"]
+                }
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
+
+@router.get("/auth/me", response_model=UserResponse, tags=["Authentication"])
+def get_current_user_profile(current_user: dict = Depends(get_current_user_required)):
+    try:
+        conn = get_db_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT id, email, name, created_at FROM users WHERE id = %s;", (current_user["id"],))
+            user_row = cur.fetchone()
+            conn.close()
+            if not user_row:
+                raise HTTPException(status_code=404, detail="User not found")
+            return {
+                "id": user_row["id"],
+                "email": user_row["email"],
+                "name": user_row["name"] or "",
+                "createdAt": user_row["created_at"]
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch profile: {str(e)}")
+
+# ==========================================
+# --- Task CRUD Endpoints ---
+# ==========================================
+
+@router.get("/tasks", response_model=List[TaskResponse], tags=["Tasks"])
+def get_tasks(current_user: Optional[dict] = Depends(get_current_user_optional)):
+    try:
+        conn = get_db_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            if current_user:
+                # Return tasks belonging to this user, plus general demo tasks if user has none
+                cur.execute("""
+                    SELECT * FROM tasks 
+                    WHERE user_id = %s OR user_id IS NULL 
+                    ORDER BY created_at DESC;
+                """, (current_user["id"],))
+            else:
+                # Guest mode: return demo/shared tasks
+                cur.execute("SELECT * FROM tasks WHERE user_id IS NULL ORDER BY created_at DESC;")
+
             rows = cur.fetchall()
             tasks = []
             for row in rows:
@@ -62,6 +203,7 @@ def get_tasks():
                     "project": row.get("project") or "Engineering",
                     "dueDate": row.get("due_date"),
                     "tags": row.get("tags") or [],
+                    "userId": row.get("user_id"),
                     "createdAt": row.get("created_at")
                 })
             conn.close()
@@ -70,14 +212,16 @@ def get_tasks():
         raise HTTPException(status_code=500, detail=f"Failed to fetch tasks: {str(e)}")
 
 @router.post("/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED, tags=["Tasks"])
-def create_task(task: TaskCreate):
+def create_task(task: TaskCreate, current_user: Optional[dict] = Depends(get_current_user_optional)):
     task_id = task.id or f"task-{int(time.time() * 1000)}"
+    user_id = current_user["id"] if current_user else None
+
     try:
         conn = get_db_connection()
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
-                INSERT INTO tasks (id, title, description, status, priority, project, due_date, tags)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO tasks (id, title, description, status, priority, project, due_date, tags, user_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING *;
             """, (
                 task_id,
@@ -87,7 +231,8 @@ def create_task(task: TaskCreate):
                 task.priority or "medium",
                 task.project or "Engineering",
                 task.dueDate,
-                json.dumps(task.tags or [])
+                json.dumps(task.tags or []),
+                user_id
             ))
             row = cur.fetchone()
             conn.commit()
@@ -101,13 +246,14 @@ def create_task(task: TaskCreate):
                 "project": row["project"] or "Engineering",
                 "dueDate": row["due_date"],
                 "tags": row["tags"] or [],
+                "userId": row.get("user_id"),
                 "createdAt": row["created_at"]
             }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create task: {str(e)}")
 
 @router.put("/tasks/{task_id}", response_model=TaskResponse, tags=["Tasks"])
-def update_task(task_id: str, task: TaskUpdate):
+def update_task(task_id: str, task: TaskUpdate, current_user: Optional[dict] = Depends(get_current_user_optional)):
     try:
         conn = get_db_connection()
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -143,6 +289,7 @@ def update_task(task_id: str, task: TaskUpdate):
                 "project": row["project"] or "Engineering",
                 "dueDate": row["due_date"],
                 "tags": row["tags"] or [],
+                "userId": row.get("user_id"),
                 "createdAt": row["created_at"]
             }
     except HTTPException:
@@ -151,7 +298,7 @@ def update_task(task_id: str, task: TaskUpdate):
         raise HTTPException(status_code=500, detail=f"Failed to update task: {str(e)}")
 
 @router.delete("/tasks/{task_id}", tags=["Tasks"])
-def delete_task(task_id: str):
+def delete_task(task_id: str, current_user: Optional[dict] = Depends(get_current_user_optional)):
     try:
         conn = get_db_connection()
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -169,11 +316,14 @@ def delete_task(task_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to delete task: {str(e)}")
 
 @router.delete("/tasks-clear/completed", tags=["Tasks"])
-def clear_completed_tasks():
+def clear_completed_tasks(current_user: Optional[dict] = Depends(get_current_user_optional)):
     try:
         conn = get_db_connection()
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("DELETE FROM tasks WHERE status = 'completed';")
+            if current_user:
+                cur.execute("DELETE FROM tasks WHERE status = 'completed' AND (user_id = %s OR user_id IS NULL);", (current_user["id"],))
+            else:
+                cur.execute("DELETE FROM tasks WHERE status = 'completed';")
             count = cur.rowcount
             conn.commit()
             conn.close()

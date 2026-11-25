@@ -118,7 +118,11 @@
         clock: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />,
         chevronDown: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />,
         download: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />,
-        filter: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+        filter: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />,
+        user: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />,
+        logIn: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />,
+        logOut: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />,
+        lock: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
       };
 
       return (
@@ -223,10 +227,33 @@
 
     // --- MAIN APPLICATION COMPONENT ---
     const API_BASE = window.location.protocol === 'file:' 
-      ? "http://localhost:5000/api" 
+      ? "http://localhost:8000/api" 
       : "/api";
 
     function App() {
+      // User Authentication State
+      const [currentUser, setCurrentUser] = useState(() => {
+        try {
+          const cached = localStorage.getItem("pulsetask_user");
+          return cached ? JSON.parse(cached) : null;
+        } catch {
+          return null;
+        }
+      });
+      const [authToken, setAuthToken] = useState(() => localStorage.getItem("pulsetask_token") || "");
+      const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+      const [authMode, setAuthMode] = useState("login"); // 'login' | 'register'
+
+      // Helper for authenticated requests
+      const getAuthHeaders = (tokenOverride) => {
+        const token = tokenOverride !== undefined ? tokenOverride : (localStorage.getItem("pulsetask_token") || authToken);
+        const headers = { "Content-Type": "application/json" };
+        if (token) {
+          headers["Authorization"] = `Bearer ${token}`;
+        }
+        return headers;
+      };
+
       // LocalStorage & Neon Database State
       const [tasks, setTasks] = useState(() => {
         try {
@@ -255,37 +282,56 @@
       const [editingTask, setEditingTask] = useState(null);
       const [toastMessage, setToastMessage] = useState(null);
 
-      // Check Backend & Fetch from Neon Database on Mount
-      useEffect(() => {
-        async function fetchNeonData() {
-          try {
-            const res = await fetch(`${API_BASE}/tasks`);
-            if (res.ok) {
-              const data = await res.json();
-              if (Array.isArray(data) && data.length > 0) {
-                setTasks(data);
-              } else if (Array.isArray(data) && data.length === 0) {
-                // If cloud database is empty, seed initial demo tasks into Neon!
-                for (const item of INITIAL_TASKS) {
-                  await fetch(`${API_BASE}/tasks`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(item),
-                  });
-                }
-                setTasks(INITIAL_TASKS);
+      // Check Backend & Fetch from Neon Database
+      const fetchNeonData = async (tokenOverride) => {
+        try {
+          const res = await fetch(`${API_BASE}/tasks`, {
+            headers: getAuthHeaders(tokenOverride)
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data) && data.length > 0) {
+              setTasks(data);
+            } else if (Array.isArray(data) && data.length === 0) {
+              for (const item of INITIAL_TASKS) {
+                await fetch(`${API_BASE}/tasks`, {
+                  method: 'POST',
+                  headers: getAuthHeaders(tokenOverride),
+                  body: JSON.stringify(item),
+                });
               }
-              setDbStatus("connected");
-              showToast("Connected to Neon PostgreSQL");
-            } else {
-              setDbStatus("offline");
+              setTasks(INITIAL_TASKS);
             }
-          } catch {
+            setDbStatus("connected");
+          } else {
             setDbStatus("offline");
           }
+        } catch {
+          setDbStatus("offline");
         }
+      };
+
+      useEffect(() => {
         fetchNeonData();
       }, []);
+
+      const handleAuthSuccess = (data) => {
+        localStorage.setItem("pulsetask_token", data.token);
+        localStorage.setItem("pulsetask_user", JSON.stringify(data.user));
+        setAuthToken(data.token);
+        setCurrentUser(data.user);
+        fetchNeonData(data.token);
+        showToast(`Welcome, ${data.user.name || data.user.email}!`);
+      };
+
+      const handleLogout = () => {
+        localStorage.removeItem("pulsetask_token");
+        localStorage.removeItem("pulsetask_user");
+        setAuthToken("");
+        setCurrentUser(null);
+        fetchNeonData("");
+        showToast("Signed out successfully");
+      };
 
       // Save to localStorage as backup
       useEffect(() => {
@@ -327,7 +373,7 @@
           try {
             await fetch(`${API_BASE}/tasks/${id}`, {
               method: "PUT",
-              headers: { "Content-Type": "application/json" },
+              headers: getAuthHeaders(),
               body: JSON.stringify({ status: nextStatus }),
             });
           } catch (e) {
@@ -345,7 +391,7 @@
             try {
               await fetch(`${API_BASE}/tasks/${editingTask.id}`, {
                 method: "PUT",
-                headers: { "Content-Type": "application/json" },
+                headers: getAuthHeaders(),
                 body: JSON.stringify(taskData),
               });
             } catch (e) {
@@ -365,7 +411,7 @@
             try {
               await fetch(`${API_BASE}/tasks`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: getAuthHeaders(),
                 body: JSON.stringify(newTask),
               });
             } catch (e) {
@@ -384,7 +430,10 @@
 
         if (dbStatus === "connected") {
           try {
-            await fetch(`${API_BASE}/tasks/${id}`, { method: "DELETE" });
+            await fetch(`${API_BASE}/tasks/${id}`, {
+              method: "DELETE",
+              headers: getAuthHeaders()
+            });
           } catch (e) {
             console.error("DB delete error", e);
           }
@@ -398,7 +447,7 @@
           try {
             await fetch(`${API_BASE}/tasks/${id}`, {
               method: "PUT",
-              headers: { "Content-Type": "application/json" },
+              headers: getAuthHeaders(),
               body: JSON.stringify({ status: newStatus }),
             });
           } catch (e) {
@@ -414,7 +463,10 @@
 
           if (dbStatus === "connected") {
             try {
-              await fetch(`${API_BASE}/tasks-clear/completed`, { method: "DELETE" });
+              await fetch(`${API_BASE}/tasks-clear/completed`, {
+                method: "DELETE",
+                headers: getAuthHeaders()
+              });
             } catch (e) {
               console.error("DB clear error", e);
             }
@@ -521,17 +573,26 @@
               {/* Workspace Selector */}
               {isSidebarOpen && (
                 <div className="p-3">
-                  <div className="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between">
+                  <div 
+                    onClick={() => { if (!currentUser) { setAuthMode("login"); setIsAuthModalOpen(true); } }}
+                    className="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between cursor-pointer hover:border-brand-500/50 transition-colors"
+                  >
                     <div className="flex items-center space-x-2.5">
-                      <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-xs">
-                        AC
+                      <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-xs uppercase">
+                        {currentUser ? (currentUser.name ? currentUser.name.slice(0, 2).toUpperCase() : "US") : "AC"}
                       </div>
                       <div className="text-left">
-                        <div className="text-xs font-semibold text-slate-900 dark:text-white leading-tight">Acme Global</div>
-                        <div className="text-[10px] text-slate-400">Team Workspace</div>
+                        <div className="text-xs font-semibold text-slate-900 dark:text-white leading-tight truncate max-w-[110px]">
+                          {currentUser ? (currentUser.name || "My Workspace") : "Acme Global"}
+                        </div>
+                        <div className="text-[10px] text-slate-400 truncate max-w-[110px]">
+                          {currentUser ? currentUser.email : "Team Workspace"}
+                        </div>
                       </div>
                     </div>
-                    <span className="px-1.5 py-0.5 text-[9px] font-bold bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300 rounded uppercase">Pro</span>
+                    <span className="px-1.5 py-0.5 text-[9px] font-bold bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300 rounded uppercase">
+                      {currentUser ? "Active" : "Guest"}
+                    </span>
                   </div>
                 </div>
               )}
@@ -757,6 +818,35 @@
                   <Icon name="plus" className="w-4 h-4" />
                   <span className="hidden sm:inline">New Task</span>
                 </button>
+
+                {/* User Auth Profile / Sign In Button */}
+                {currentUser ? (
+                  <div className="flex items-center space-x-2 bg-slate-100 dark:bg-slate-800/90 px-3 py-1.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 shadow-sm">
+                    <div className="w-6 h-6 rounded-full bg-brand-600 text-white flex items-center justify-center text-[10px] font-bold uppercase">
+                      {currentUser.name ? currentUser.name.slice(0, 2).toUpperCase() : "US"}
+                    </div>
+                    <div className="hidden md:block text-left">
+                      <div className="text-xs font-semibold text-slate-800 dark:text-slate-100 leading-tight truncate max-w-[100px]">
+                        {currentUser.name || currentUser.email.split('@')[0]}
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleLogout}
+                      className="p-1 rounded-lg text-slate-400 hover:text-red-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors ml-1"
+                      title="Sign Out"
+                    >
+                      <Icon name="logOut" className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => { setAuthMode("login"); setIsAuthModalOpen(true); }}
+                    className="flex items-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 transition-all shadow-sm active:scale-95"
+                  >
+                    <Icon name="user" className="w-3.5 h-3.5" />
+                    <span>Sign In</span>
+                  </button>
+                )}
               </div>
             </header>
 
@@ -1077,6 +1167,14 @@
             />
           )}
 
+          {/* ===================== AUTH MODAL (LOGIN / SIGN UP) ===================== */}
+          <AuthModal
+            isOpen={isAuthModalOpen}
+            initialMode={authMode}
+            onClose={() => setIsAuthModalOpen(false)}
+            onAuthSuccess={handleAuthSuccess}
+          />
+
           {/* ===================== TOAST NOTIFICATION ===================== */}
           {toastMessage && (
             <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white dark:bg-white dark:text-slate-900 px-4 py-2.5 rounded-xl shadow-xl flex items-center space-x-2.5 text-xs font-semibold animate-bounce">
@@ -1211,6 +1309,198 @@
                   {task?.id ? "Save Changes" : "Create Task"}
                 </button>
               </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // --- AUTH MODAL (LOGIN & REGISTRATION) ---
+    function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode = "login" }) {
+      const [mode, setMode] = useState(initialMode); // 'login' | 'register'
+      const [email, setEmail] = useState("");
+      const [password, setPassword] = useState("");
+      const [name, setName] = useState("");
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState(null);
+
+      useEffect(() => {
+        setMode(initialMode);
+        setError(null);
+      }, [initialMode, isOpen]);
+
+      if (!isOpen) return null;
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError(null);
+        setLoading(true);
+
+        const endpoint = mode === "login" ? `${API_BASE}/auth/login` : `${API_BASE}/auth/register`;
+        const payload = mode === "login" 
+          ? { email: email.trim(), password }
+          : { email: email.trim(), password, name: name.trim() };
+
+        try {
+          const res = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(data.detail || "Authentication failed. Check credentials.");
+          }
+          onAuthSuccess(data);
+          onClose();
+        } catch (err) {
+          setError(err.message || "An unexpected error occurred");
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const handleDemoLogin = async () => {
+        setEmail("veerendra.pulsetask@example.com");
+        setPassword("password123");
+        setError(null);
+        setLoading(true);
+        try {
+          const res = await fetch(`${API_BASE}/auth/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: "veerendra.pulsetask@example.com", password: "password123" })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.detail || "Demo login failed");
+          onAuthSuccess(data);
+          onClose();
+        } catch (err) {
+          setError(err.message);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white dark:bg-[#111827] w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
+            {/* Header / Tabs */}
+            <div className="p-6 pb-4 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-brand-500/20">
+                    <Icon name="lock" className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                      {mode === "login" ? "Sign In to PulseTask" : "Create SaaS Account"}
+                    </h3>
+                    <p className="text-xs text-slate-400">Sync personal tasks with Neon Cloud PostgreSQL</p>
+                  </div>
+                </div>
+                <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
+                  <Icon name="close" className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Segmented Control */}
+              <div className="grid grid-cols-2 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => { setMode("login"); setError(null); }}
+                  className={`py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                    mode === "login"
+                      ? "bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm"
+                      : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                  }`}
+                >
+                  Sign In
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setMode("register"); setError(null); }}
+                  className={`py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                    mode === "register"
+                      ? "bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm"
+                      : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                  }`}
+                >
+                  Create Account
+                </button>
+              </div>
+            </div>
+
+            {/* Error Message */}
+            {error && (
+              <div className="mx-6 mt-4 p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-xl text-red-600 dark:text-red-400 text-xs flex items-center space-x-2">
+                <span>⚠️ {error}</span>
+              </div>
+            )}
+
+            {/* Form */}
+            <form onSubmit={handleSubmit} className="p-6 pt-4 space-y-4">
+              {mode === "register" && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g. Veerendra"
+                    className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Email Address</label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="name@company.com"
+                  className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Password</label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="At least 6 characters"
+                  className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2.5 px-4 bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white text-xs font-semibold rounded-xl shadow-md shadow-brand-500/25 transition-all transform active:scale-[0.98] disabled:opacity-50"
+              >
+                {loading ? "Processing..." : mode === "login" ? "Sign In to Account" : "Register New Account"}
+              </button>
+
+              <div className="relative flex py-1 items-center">
+                <div className="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
+                <span className="flex-shrink mx-3 text-[10px] uppercase font-bold text-slate-400">or</span>
+                <div className="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleDemoLogin}
+                disabled={loading}
+                className="w-full py-2 px-3 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/60 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors flex items-center justify-center space-x-2"
+              >
+                <span>⚡ 1-Click Demo Login (Veerendra)</span>
+              </button>
             </form>
           </div>
         </div>
