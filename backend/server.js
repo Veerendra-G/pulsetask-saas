@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const { Pool } = require('pg');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 require('dotenv').config();
@@ -528,12 +529,15 @@ app.delete('/api/tasks-clear/completed', async (req, res) => {
 
 // ========================== FRONTEND WEB SERVICE ==========================
 // Serve the React frontend directly as a web service
-const frontendPath = path.join(__dirname, '..');
+const frontendPath = fs.existsSync(path.join(__dirname, 'index.html'))
+  ? __dirname
+  : path.join(__dirname, '..');
+
 app.use(express.static(frontendPath));
 
 // Fallback all non-API web traffic to index.html
 app.get('*', (req, res) => {
-  if (!req.path.startsWith('/api')) {
+  if (!req.path.startsWith('/api') && req.path !== '/docs' && req.path !== '/api-docs') {
     res.sendFile(path.join(frontendPath, 'index.html'));
   }
 });
