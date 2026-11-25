@@ -3,9 +3,9 @@ import json
 import time
 from pathlib import Path
 from typing import List
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, APIRouter, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from psycopg2.extras import RealDictCursor
 
 from database import get_db_connection, init_db
@@ -19,7 +19,7 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# Enable CORS for React frontend (Vercel, localhost:5173, mobile, localhost:8000)
+# Enable CORS for React frontend (Vercel, localhost, mobile)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -32,16 +32,19 @@ app.add_middleware(
 def on_startup():
     init_db()
 
-@app.get("/api/health", tags=["System"])
+# Create API Router to support both /api/... and direct /... calls
+router = APIRouter()
+
+@router.get("/health", tags=["System"])
 def health_check():
     return {
         "status": "ok",
         "service": "PulseTask FastAPI Backend",
-        "runtime": "Python 3",
+        "runtime": "Python 3.12",
         "database": "Neon PostgreSQL"
     }
 
-@app.get("/api/tasks", response_model=List[TaskResponse], tags=["Tasks"])
+@router.get("/tasks", response_model=List[TaskResponse], tags=["Tasks"])
 def get_tasks():
     try:
         conn = get_db_connection()
@@ -66,7 +69,7 @@ def get_tasks():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch tasks: {str(e)}")
 
-@app.post("/api/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED, tags=["Tasks"])
+@router.post("/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED, tags=["Tasks"])
 def create_task(task: TaskCreate):
     task_id = task.id or f"task-{int(time.time() * 1000)}"
     try:
@@ -103,7 +106,7 @@ def create_task(task: TaskCreate):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create task: {str(e)}")
 
-@app.put("/api/tasks/{task_id}", response_model=TaskResponse, tags=["Tasks"])
+@router.put("/tasks/{task_id}", response_model=TaskResponse, tags=["Tasks"])
 def update_task(task_id: str, task: TaskUpdate):
     try:
         conn = get_db_connection()
@@ -147,7 +150,7 @@ def update_task(task_id: str, task: TaskUpdate):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update task: {str(e)}")
 
-@app.delete("/api/tasks/{task_id}", tags=["Tasks"])
+@router.delete("/tasks/{task_id}", tags=["Tasks"])
 def delete_task(task_id: str):
     try:
         conn = get_db_connection()
@@ -165,11 +168,11 @@ def delete_task(task_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete task: {str(e)}")
 
-@app.delete("/api/tasks-clear/completed", tags=["Tasks"])
+@router.delete("/tasks-clear/completed", tags=["Tasks"])
 def clear_completed_tasks():
     try:
         conn = get_db_connection()
-        with conn.cursor() as cur:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("DELETE FROM tasks WHERE status = 'completed';")
             count = cur.rowcount
             conn.commit()
@@ -178,16 +181,38 @@ def clear_completed_tasks():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to clear completed tasks: {str(e)}")
 
-# Serve React Frontend UI directly at root http://localhost:8000
-frontend_html = Path(__file__).resolve().parent / "index.html"
-if not frontend_html.exists():
-    frontend_html = Path(__file__).resolve().parent.parent / "index.html"
+# Mount the router on both /api and root so /api/tasks and /tasks both work
+app.include_router(router, prefix="/api")
+app.include_router(router, prefix="")
+
+# Locate the React frontend HTML file
+def get_frontend_html():
+    candidates = [
+        Path(__file__).resolve().parent / "index.html",
+        Path(__file__).resolve().parent.parent / "index.html",
+        Path("/var/task/index.html"),
+        Path("/var/task/backend_python/index.html")
+    ]
+    for p in candidates:
+        if p.exists():
+            return p
+    return None
 
 @app.get("/", include_in_schema=False)
 def serve_index():
-    if frontend_html.exists():
-        return FileResponse(frontend_html)
-    return {"message": "PulseTask React UI file not found"}
+    html_path = get_frontend_html()
+    if html_path:
+        return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
+    return HTMLResponse(content="<h1>PulseTask React SaaS - Loading...</h1>")
+
+@app.get("/{full_path:path}", include_in_schema=False)
+def serve_spa(full_path: str):
+    if full_path in ("docs", "redoc", "openapi.json") or full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="Not Found")
+    html_path = get_frontend_html()
+    if html_path:
+        return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
+    return HTMLResponse(content="<h1>PulseTask React SaaS - Loading...</h1>")
 
 if __name__ == "__main__":
     import uvicorn
