@@ -9,5 +9,13 @@ echo  Swagger API Docs:   http://localhost:8000/docs
 echo  Alternative Docs:   http://localhost:8000/redoc
 echo ========================================================
 echo.
-python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+set PYTHON_EXE=C:\Users\gandl\AppData\Local\Programs\Python\Python312\python.exe
+
+if exist "%PYTHON_EXE%" (
+    "%PYTHON_EXE%" -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+) else (
+    python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+)
+
 pause
