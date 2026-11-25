@@ -28,14 +28,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Vercel Serverless Routing Middleware
-@app.middleware("http")
-async def vercel_routing_middleware(request: Request, call_next):
-    matched_path = request.headers.get("x-matched-path")
-    if matched_path:
-        request.scope["path"] = matched_path
-    return await call_next(request)
-
 @app.on_event("startup")
 def on_startup():
     init_db()

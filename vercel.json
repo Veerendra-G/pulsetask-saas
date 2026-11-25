@@ -1,10 +1,10 @@
 {
   "version": 2,
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index.py" },
-    { "source": "/docs", "destination": "/api/index.py" },
-    { "source": "/openapi.json", "destination": "/api/index.py" },
-    { "source": "/redoc", "destination": "/api/index.py" },
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/docs", "destination": "/api/docs" },
+    { "source": "/openapi.json", "destination": "/api/openapi.json" },
+    { "source": "/redoc", "destination": "/api/redoc" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
