@@ -179,7 +179,9 @@ def clear_completed_tasks():
         raise HTTPException(status_code=500, detail=f"Failed to clear completed tasks: {str(e)}")
 
 # Serve React Frontend UI directly at root http://localhost:8000
-frontend_html = Path(__file__).resolve().parent.parent / "index.html"
+frontend_html = Path(__file__).resolve().parent / "index.html"
+if not frontend_html.exists():
+    frontend_html = Path(__file__).resolve().parent.parent / "index.html"
 
 @app.get("/", include_in_schema=False)
 def serve_index():
