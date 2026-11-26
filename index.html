@@ -578,6 +578,38 @@
         return { total, completed, inProgress, todo, overdue, rate };
       }, [tasks]);
 
+      // MANDATORY LOGIN GATE: If user is not logged in, show login card directly!
+      if (!currentUser) {
+        return (
+          <div className="min-h-screen bg-slate-100 dark:bg-[#0b0f19] flex flex-col items-center justify-center p-4">
+            <div className="flex items-center space-x-2.5 mb-6">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-brand-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-brand-500/30">
+                <Icon name="sparkles" className="w-5 h-5" />
+              </div>
+              <div className="flex items-center">
+                <span className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">PulseTask</span>
+                <span className="ml-2 text-[10px] font-bold uppercase tracking-wider text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 px-2 py-0.5 rounded-full border border-brand-200 dark:border-brand-800">SaaS</span>
+              </div>
+            </div>
+
+            <AuthModal
+              isOpen={true}
+              isMandatory={true}
+              initialMode={authMode}
+              onClose={() => {}}
+              onAuthSuccess={handleAuthSuccess}
+            />
+
+            {toastMessage && (
+              <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-xl flex items-center space-x-2.5 text-xs font-semibold animate-bounce">
+                <Icon name="checkCircle" className="w-4 h-4 text-emerald-400" />
+                <span>{toastMessage}</span>
+              </div>
+            )}
+          </div>
+        );
+      }
+
       return (
         <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-[#0b0f19]">
 
@@ -1384,8 +1416,8 @@
       );
     }
 
-    // --- AUTH MODAL (LOGIN & REGISTRATION WITH GOOGLE, FACEBOOK, TWITTER) ---
-    function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode = "login" }) {
+    // --- AUTH MODAL (LOGIN & REGISTRATION WITH GOOGLE) ---
+    function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode = "login", isMandatory = false }) {
       const [mode, setMode] = useState(initialMode); // 'login' | 'register'
       const [email, setEmail] = useState("gandlaveerendra1234@gmail.com");
       const [password, setPassword] = useState("veeeru123");
@@ -1426,7 +1458,7 @@
             throw new Error(data.detail || "Authentication failed. Check your credentials.");
           }
           onAuthSuccess(data);
-          onClose();
+          if (!isMandatory && onClose) onClose();
         } catch (err) {
           setError(err.message || "An unexpected error occurred");
         } finally {
@@ -1434,22 +1466,12 @@
         }
       };
 
-      const handleSocialAuth = async (provider) => {
+      const handleSocialAuth = async (provider = "google") => {
         setError(null);
         setLoading(true);
 
-        let socialEmail = email || "gandlaveerendra1234@gmail.com";
-        let socialName = "Veerendra";
-        if (provider === "facebook") {
-          socialEmail = "veerendra.fb@pulsetask.com";
-          socialName = "Veerendra (Facebook)";
-        } else if (provider === "twitter") {
-          socialEmail = "veerendra.x@pulsetask.com";
-          socialName = "Veerendra (Twitter)";
-        } else if (provider === "google") {
-          socialEmail = "gandlaveerendra1234@gmail.com";
-          socialName = "Veerendra";
-        }
+        const socialEmail = email || "gandlaveerendra1234@gmail.com";
+        const socialName = "Veerendra";
 
         try {
           const res = await fetch(`${API_BASE}/auth/social`, {
@@ -1462,9 +1484,9 @@
             })
           });
           const data = await res.json();
-          if (!res.ok) throw new Error(data.detail || `${provider} sign in failed`);
+          if (!res.ok) throw new Error(data.detail || "Google sign in failed");
           onAuthSuccess(data);
-          onClose();
+          if (!isMandatory && onClose) onClose();
         } catch (err) {
           setError(err.message);
         } finally {
@@ -1472,148 +1494,135 @@
         }
       };
 
-      return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fadeIn">
-          <div className="relative bg-white dark:bg-[#111827] w-full max-w-[400px] rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-2xl p-8 pt-7">
-            
-            {/* Close Button */}
+      const card = (
+        <div className="relative bg-white dark:bg-[#111827] w-full max-w-[400px] rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-2xl p-8 pt-7">
+          
+          {/* Close Button (only when optional modal) */}
+          {!isMandatory && (
             <button 
               onClick={onClose} 
               className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               <Icon name="close" className="w-4 h-4" />
             </button>
+          )}
 
-            {/* Title - exactly as in design */}
-            <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-6">
-              {mode === "login" ? "Login to your Account" : "Create your Account"}
-            </h2>
+          {/* Title - exactly as in design */}
+          <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-6">
+            {mode === "login" ? "Login to your Account" : "Create your Account"}
+          </h2>
 
-            {/* Error Banner */}
-            {error && (
-              <div className="mb-4 p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-xl text-red-600 dark:text-red-400 text-xs">
-                ⚠️ {error}
-              </div>
-            )}
+          {/* Error Banner */}
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-xl text-red-600 dark:text-red-400 text-xs">
+              ⚠️ {error}
+            </div>
+          )}
 
-            {/* Form */}
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Email"
-                  className="w-full text-sm px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 shadow-sm transition-all"
-                />
-              </div>
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Email"
+                className="w-full text-sm px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 shadow-sm transition-all"
+              />
+            </div>
 
+            <div>
+              <input
+                type="password"
+                required
+                minLength={6}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password"
+                className="w-full text-sm px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 shadow-sm transition-all"
+              />
+            </div>
+
+            {mode === "register" && (
               <div>
                 <input
                   type="password"
                   required
                   minLength={6}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm Password"
                   className="w-full text-sm px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 shadow-sm transition-all"
                 />
               </div>
+            )}
 
-              {mode === "register" && (
-                <div>
-                  <input
-                    type="password"
-                    required
-                    minLength={6}
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Confirm Password"
-                    className="w-full text-sm px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 shadow-sm transition-all"
-                  />
-                </div>
-              )}
+            {/* Deep Blue Sign in / Sign up Button */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 px-4 bg-[#1e3a8a] hover:bg-[#172554] text-white text-sm font-semibold rounded-xl shadow-lg shadow-blue-900/20 transition-all transform active:scale-[0.98] disabled:opacity-50 mt-2"
+            >
+              {loading ? "Please wait..." : mode === "login" ? "Sign in" : "Sign up"}
+            </button>
+          </form>
 
-              {/* Deep Blue Sign in / Sign up Button */}
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3.5 px-4 bg-[#1e3a8a] hover:bg-[#172554] text-white text-sm font-semibold rounded-xl shadow-lg shadow-blue-900/20 transition-all transform active:scale-[0.98] disabled:opacity-50 mt-2"
-              >
-                {loading ? "Please wait..." : mode === "login" ? "Sign in" : "Sign up"}
-              </button>
-            </form>
-
-            {/* Divider - exactly as in design */}
-            <div className="text-center text-xs text-slate-400 my-5 font-normal">
-              - Or {mode === "login" ? "sign in" : "sign up"} with -
-            </div>
-
-            {/* Social Logins Row: Google, Facebook, Twitter */}
-            <div className="flex items-center justify-center gap-4">
-              {/* Google */}
-              <button
-                type="button"
-                onClick={() => handleSocialAuth("google")}
-                disabled={loading}
-                title="Sign in with Google"
-                className="w-16 h-12 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 flex items-center justify-center transition-all transform active:scale-95 group"
-              >
-                <GoogleIcon className="w-5 h-5 transition-transform group-hover:scale-110" />
-              </button>
-
-              {/* Facebook */}
-              <button
-                type="button"
-                onClick={() => handleSocialAuth("facebook")}
-                disabled={loading}
-                title="Sign in with Facebook"
-                className="w-16 h-12 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 flex items-center justify-center transition-all transform active:scale-95 group"
-              >
-                <FacebookIcon className="w-5 h-5 transition-transform group-hover:scale-110" />
-              </button>
-
-              {/* Twitter / X */}
-              <button
-                type="button"
-                onClick={() => handleSocialAuth("twitter")}
-                disabled={loading}
-                title="Sign in with Twitter"
-                className="w-16 h-12 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 flex items-center justify-center transition-all transform active:scale-95 group"
-              >
-                <TwitterIcon className="w-5 h-5 transition-transform group-hover:scale-110" />
-              </button>
-            </div>
-
-            {/* Bottom Toggle */}
-            <div className="text-center text-xs text-slate-500 dark:text-slate-400 mt-6">
-              {mode === "login" ? (
-                <span>
-                  Don't have an account?{" "}
-                  <button
-                    type="button"
-                    onClick={() => { setMode("register"); setError(null); }}
-                    className="text-blue-700 dark:text-blue-400 font-semibold hover:underline ml-1"
-                  >
-                    Sign up
-                  </button>
-                </span>
-              ) : (
-                <span>
-                  Already have an account?{" "}
-                  <button
-                    type="button"
-                    onClick={() => { setMode("login"); setError(null); }}
-                    className="text-blue-700 dark:text-blue-400 font-semibold hover:underline ml-1"
-                  >
-                    Sign in
-                  </button>
-                </span>
-              )}
-            </div>
-
+          {/* Divider */}
+          <div className="text-center text-xs text-slate-400 my-5 font-normal">
+            - Or {mode === "login" ? "sign in" : "sign up"} with -
           </div>
+
+          {/* Social Login: Only Google */}
+          <div className="flex items-center justify-center">
+            <button
+              type="button"
+              onClick={() => handleSocialAuth("google")}
+              disabled={loading}
+              title="Sign in with Google"
+              className="w-16 h-12 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 flex items-center justify-center transition-all transform active:scale-95 group"
+            >
+              <GoogleIcon className="w-5 h-5 transition-transform group-hover:scale-110" />
+            </button>
+          </div>
+
+          {/* Bottom Toggle */}
+          <div className="text-center text-xs text-slate-500 dark:text-slate-400 mt-6">
+            {mode === "login" ? (
+              <span>
+                Don't have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => { setMode("register"); setError(null); }}
+                  className="text-blue-700 dark:text-blue-400 font-semibold hover:underline ml-1"
+                >
+                  Sign up
+                </button>
+              </span>
+            ) : (
+              <span>
+                Already have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => { setMode("login"); setError(null); }}
+                  className="text-blue-700 dark:text-blue-400 font-semibold hover:underline ml-1"
+                >
+                  Sign in
+                </button>
+              </span>
+            )}
+          </div>
+
+        </div>
+      );
+
+      if (isMandatory) {
+        return card;
+      }
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fadeIn">
+          {card}
         </div>
       );
     }
