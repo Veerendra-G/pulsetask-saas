@@ -136,12 +136,26 @@
     };
 
     // Google Brand SVG Icon
-    const GoogleIcon = ({ className = "w-4 h-4" }) => (
+    const GoogleIcon = ({ className = "w-5 h-5" }) => (
       <svg className={className} viewBox="0 0 24 24">
         <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
         <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
         <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
         <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+      </svg>
+    );
+
+    // Facebook Brand SVG Icon
+    const FacebookIcon = ({ className = "w-5 h-5" }) => (
+      <svg className={className} viewBox="0 0 24 24" fill="#1877F2">
+        <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+      </svg>
+    );
+
+    // Twitter Brand SVG Icon
+    const TwitterIcon = ({ className = "w-5 h-5" }) => (
+      <svg className={className} viewBox="0 0 24 24" fill="#1DA1F2">
+        <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.936 9.936 0 0024 4.59z"/>
       </svg>
     );
 
@@ -1370,17 +1384,17 @@
       );
     }
 
-    // --- AUTH MODAL (LOGIN & REGISTRATION) ---
+    // --- AUTH MODAL (LOGIN & REGISTRATION WITH GOOGLE, FACEBOOK, TWITTER) ---
     function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode = "login" }) {
       const [mode, setMode] = useState(initialMode); // 'login' | 'register'
       const [email, setEmail] = useState("gandlaveerendra1234@gmail.com");
-      const [password, setPassword] = useState("");
-      const [name, setName] = useState("Veerendra");
+      const [password, setPassword] = useState("veeeru123");
+      const [confirmPassword, setConfirmPassword] = useState("veeeru123");
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState(null);
 
       useEffect(() => {
-        setMode(initialMode);
+        setMode(initialMode === "google" ? "login" : initialMode);
         setError(null);
       }, [initialMode, isOpen]);
 
@@ -1389,12 +1403,17 @@
       const handleSubmit = async (e) => {
         e.preventDefault();
         setError(null);
-        setLoading(true);
 
+        if (mode === "register" && password !== confirmPassword) {
+          setError("Passwords do not match. Please re-enter.");
+          return;
+        }
+
+        setLoading(true);
         const endpoint = mode === "login" ? `${API_BASE}/auth/login` : `${API_BASE}/auth/register`;
         const payload = mode === "login" 
           ? { email: email.trim(), password }
-          : { email: email.trim(), password, name: name.trim() };
+          : { email: email.trim(), password, name: email.split("@")[0] };
 
         try {
           const res = await fetch(endpoint, {
@@ -1404,7 +1423,7 @@
           });
           const data = await res.json();
           if (!res.ok) {
-            throw new Error(data.detail || "Authentication failed. Check credentials.");
+            throw new Error(data.detail || "Authentication failed. Check your credentials.");
           }
           onAuthSuccess(data);
           onClose();
@@ -1415,46 +1434,35 @@
         }
       };
 
-      const handleDemoLogin = async () => {
-        setEmail("gandlaveerendra1234@gmail.com");
-        setPassword("veeeru123");
+      const handleSocialAuth = async (provider) => {
         setError(null);
         setLoading(true);
-        try {
-          const res = await fetch(`${API_BASE}/auth/login`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: "gandlaveerendra1234@gmail.com", password: "veeeru123" })
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.detail || "Login failed");
-          onAuthSuccess(data);
-          onClose();
-        } catch (err) {
-          setError(err.message);
-        } finally {
-          setLoading(false);
+
+        let socialEmail = email || "gandlaveerendra1234@gmail.com";
+        let socialName = "Veerendra";
+        if (provider === "facebook") {
+          socialEmail = "veerendra.fb@pulsetask.com";
+          socialName = "Veerendra (Facebook)";
+        } else if (provider === "twitter") {
+          socialEmail = "veerendra.x@pulsetask.com";
+          socialName = "Veerendra (Twitter)";
+        } else if (provider === "google") {
+          socialEmail = "gandlaveerendra1234@gmail.com";
+          socialName = "Veerendra";
         }
-      };
-
-      const handleGoogleLogin = async (customEmail = null, customName = null) => {
-        const targetEmail = customEmail || email || "gandlaveerendra1234@gmail.com";
-        const targetName = customName || name || "Veerendra";
-        setError(null);
-        setLoading(true);
 
         try {
-          const res = await fetch(`${API_BASE}/auth/google`, {
+          const res = await fetch(`${API_BASE}/auth/social`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              email: targetEmail,
-              name: targetName,
-              picture: "https://lh3.googleusercontent.com/a/default-user"
+              provider,
+              email: socialEmail,
+              name: socialName
             })
           });
           const data = await res.json();
-          if (!res.ok) throw new Error(data.detail || "Google sign in failed");
+          if (!res.ok) throw new Error(data.detail || `${provider} sign in failed`);
           onAuthSuccess(data);
           onClose();
         } catch (err) {
@@ -1465,147 +1473,150 @@
       };
 
       return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white dark:bg-[#111827] w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
-            {/* Header / Tabs */}
-            <div className="p-6 pb-4 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center space-x-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-brand-500/20">
-                    <Icon name="lock" className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                      {mode === "login" ? "Sign In to PulseTask" : "Create SaaS Account"}
-                    </h3>
-                    <p className="text-xs text-slate-400">Unlock your private workspace with Neon PostgreSQL</p>
-                  </div>
-                </div>
-                <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
-                  <Icon name="close" className="w-5 h-5" />
-                </button>
-              </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fadeIn">
+          <div className="relative bg-white dark:bg-[#111827] w-full max-w-[400px] rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-2xl p-8 pt-7">
+            
+            {/* Close Button */}
+            <button 
+              onClick={onClose} 
+              className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              <Icon name="close" className="w-4 h-4" />
+            </button>
 
-              {/* Segmented Control */}
-              <div className="grid grid-cols-2 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl">
-                <button
-                  type="button"
-                  onClick={() => { setMode("login"); setError(null); }}
-                  className={`py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                    mode === "login"
-                      ? "bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm"
-                      : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
-                  }`}
-                >
-                  Sign In
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setMode("register"); setError(null); }}
-                  className={`py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                    mode === "register"
-                      ? "bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm"
-                      : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
-                  }`}
-                >
-                  Create Account
-                </button>
-              </div>
-            </div>
+            {/* Title - exactly as in design */}
+            <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-6">
+              {mode === "login" ? "Login to your Account" : "Create your Account"}
+            </h2>
 
-            {/* Google One-Click Action */}
-            <div className="px-6 pt-5 pb-1">
-              <button
-                type="button"
-                onClick={() => handleGoogleLogin("gandlaveerendra1234@gmail.com", "Veerendra")}
-                disabled={loading}
-                className="w-full py-2.5 px-4 bg-white dark:bg-slate-800/90 border-2 border-slate-200 dark:border-slate-700 hover:border-brand-500 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-slate-800 dark:text-slate-100 text-xs font-bold rounded-xl shadow-sm transition-all flex items-center justify-center space-x-2.5 active:scale-[0.99] group"
-              >
-                <GoogleIcon className="w-4 h-4 transition-transform group-hover:scale-110" />
-                <span>Continue with Google (Veerendra)</span>
-              </button>
-
-              <div className="relative flex py-3 items-center">
-                <div className="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
-                <span className="flex-shrink mx-3 text-[10px] uppercase font-bold text-slate-400">or continue with email</span>
-                <div className="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
-              </div>
-            </div>
-
-            {/* Error Message */}
+            {/* Error Banner */}
             {error && (
-              <div className="mx-6 p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-xl text-red-600 dark:text-red-400 text-xs flex items-center space-x-2">
-                <span>⚠️ {error}</span>
+              <div className="mb-4 p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-xl text-red-600 dark:text-red-400 text-xs">
+                ⚠️ {error}
               </div>
             )}
 
             {/* Form */}
-            <form onSubmit={handleSubmit} className="px-6 pb-6 pt-2 space-y-3.5">
-              {mode === "register" && (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Full Name</label>
-                  <input
-                    type="text"
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. Veerendra"
-                    className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
-                  />
-                </div>
-              )}
-
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Email Address</label>
                 <input
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@company.com"
-                  className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+                  placeholder="Email"
+                  className="w-full text-sm px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 shadow-sm transition-all"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Password</label>
                 <input
                   type="password"
                   required
                   minLength={6}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="At least 6 characters"
-                  className="w-full text-xs px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+                  placeholder="Password"
+                  className="w-full text-sm px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 shadow-sm transition-all"
                 />
               </div>
 
+              {mode === "register" && (
+                <div>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Confirm Password"
+                    className="w-full text-sm px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 shadow-sm transition-all"
+                  />
+                </div>
+              )}
+
+              {/* Deep Blue Sign in / Sign up Button */}
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-2.5 px-4 bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white text-xs font-semibold rounded-xl shadow-md shadow-brand-500/25 transition-all transform active:scale-[0.98] disabled:opacity-50"
+                className="w-full py-3.5 px-4 bg-[#1e3a8a] hover:bg-[#172554] text-white text-sm font-semibold rounded-xl shadow-lg shadow-blue-900/20 transition-all transform active:scale-[0.98] disabled:opacity-50 mt-2"
               >
-                {loading ? "Processing..." : mode === "login" ? "Sign In to Account" : "Register New Account"}
-              </button>
-
-              <div className="relative flex py-1 items-center">
-                <div className="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
-                <span className="flex-shrink mx-3 text-[10px] uppercase font-bold text-slate-400">or</span>
-                <div className="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleDemoLogin}
-                disabled={loading}
-                className="w-full py-2 px-3 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/60 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors flex items-center justify-center space-x-2"
-              >
-                <span>⚡ 1-Click Sign In (Veerendra)</span>
+                {loading ? "Please wait..." : mode === "login" ? "Sign in" : "Sign up"}
               </button>
             </form>
+
+            {/* Divider - exactly as in design */}
+            <div className="text-center text-xs text-slate-400 my-5 font-normal">
+              - Or {mode === "login" ? "sign in" : "sign up"} with -
+            </div>
+
+            {/* Social Logins Row: Google, Facebook, Twitter */}
+            <div className="flex items-center justify-center gap-4">
+              {/* Google */}
+              <button
+                type="button"
+                onClick={() => handleSocialAuth("google")}
+                disabled={loading}
+                title="Sign in with Google"
+                className="w-16 h-12 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 flex items-center justify-center transition-all transform active:scale-95 group"
+              >
+                <GoogleIcon className="w-5 h-5 transition-transform group-hover:scale-110" />
+              </button>
+
+              {/* Facebook */}
+              <button
+                type="button"
+                onClick={() => handleSocialAuth("facebook")}
+                disabled={loading}
+                title="Sign in with Facebook"
+                className="w-16 h-12 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 flex items-center justify-center transition-all transform active:scale-95 group"
+              >
+                <FacebookIcon className="w-5 h-5 transition-transform group-hover:scale-110" />
+              </button>
+
+              {/* Twitter / X */}
+              <button
+                type="button"
+                onClick={() => handleSocialAuth("twitter")}
+                disabled={loading}
+                title="Sign in with Twitter"
+                className="w-16 h-12 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 flex items-center justify-center transition-all transform active:scale-95 group"
+              >
+                <TwitterIcon className="w-5 h-5 transition-transform group-hover:scale-110" />
+              </button>
+            </div>
+
+            {/* Bottom Toggle */}
+            <div className="text-center text-xs text-slate-500 dark:text-slate-400 mt-6">
+              {mode === "login" ? (
+                <span>
+                  Don't have an account?{" "}
+                  <button
+                    type="button"
+                    onClick={() => { setMode("register"); setError(null); }}
+                    className="text-blue-700 dark:text-blue-400 font-semibold hover:underline ml-1"
+                  >
+                    Sign up
+                  </button>
+                </span>
+              ) : (
+                <span>
+                  Already have an account?{" "}
+                  <button
+                    type="button"
+                    onClick={() => { setMode("login"); setError(null); }}
+                    className="text-blue-700 dark:text-blue-400 font-semibold hover:underline ml-1"
+                  >
+                    Sign in
+                  </button>
+                </span>
+              )}
+            </div>
+
           </div>
         </div>
       );
+    }
     }
 
     // Render the React Application
