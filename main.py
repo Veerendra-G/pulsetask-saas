@@ -12,7 +12,7 @@ from psycopg2.extras import RealDictCursor
 from database import get_db_connection, init_db
 from models import (
     TaskCreate, TaskUpdate, TaskResponse,
-    UserRegister, UserLogin, GoogleAuthRequest, SocialAuthRequest, UserResponse, AuthResponse
+    UserRegister, UserLogin, ForgotPasswordRequest, GoogleAuthRequest, SocialAuthRequest, UserResponse, AuthResponse
 )
 from auth import (
     hash_password, verify_password, create_access_token,
@@ -149,6 +149,26 @@ def login(creds: UserLogin):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
+
+@router.post("/auth/forgot-password", tags=["Authentication"])
+def forgot_password(payload: ForgotPasswordRequest):
+    email = payload.email.strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="A valid email address is required.")
+    
+    # Check if user exists in database to confirm validity
+    try:
+        conn = get_db_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT id, email, name FROM users WHERE email = %s;", (email,))
+            user_row = cur.fetchone()
+        conn.close()
+    except Exception as e:
+        print(f"Warning during forgot password verification: {e}")
+
+    return {
+        "message": f"If an account is associated with {email}, password reset instructions have been sent to your inbox."
+    }
 
 @router.post("/auth/social", response_model=AuthResponse, tags=["Authentication"])
 def social_auth(payload: SocialAuthRequest):

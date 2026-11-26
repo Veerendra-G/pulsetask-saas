@@ -653,7 +653,7 @@
                           Pulse Workspace
                         </div>
                         <div className="text-[10px] text-slate-400 truncate max-w-[110px]">
-                          Cloud PostgreSQL
+                          Enterprise Cloud
                         </div>
                       </div>
                     </div>
@@ -755,18 +755,27 @@
               </div>
 
               {isSidebarOpen && currentUser && (
-                <div className="flex items-center space-x-3 pt-2">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xs ring-2 ring-white dark:ring-slate-900 uppercase">
-                    {currentUser.name ? currentUser.name.slice(0, 2) : (currentUser.email ? currentUser.email.slice(0, 2) : "US")}
-                  </div>
-                  <div className="truncate">
-                    <div className="text-xs font-semibold text-slate-900 dark:text-white truncate">
-                      {currentUser.name || currentUser.email.split('@')[0]}
+                <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center space-x-2.5 overflow-hidden">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xs ring-2 ring-white dark:ring-slate-900 uppercase flex-shrink-0">
+                      {currentUser.name ? currentUser.name.slice(0, 2) : (currentUser.email ? currentUser.email.slice(0, 2) : "US")}
                     </div>
-                    <div className="text-[10px] text-slate-400 truncate">
-                      {currentUser.email}
+                    <div className="truncate">
+                      <div className="text-xs font-semibold text-slate-900 dark:text-white truncate">
+                        {currentUser.name || currentUser.email.split('@')[0]}
+                      </div>
+                      <div className="text-[10px] text-slate-400 truncate">
+                        {currentUser.email}
+                      </div>
                     </div>
                   </div>
+                  <button
+                    onClick={handleLogout}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors flex-shrink-0"
+                    title="Sign Out"
+                  >
+                    <Icon name="logOut" className="w-4 h-4" />
+                  </button>
                 </div>
               )}
             </div>
@@ -796,63 +805,42 @@
                 </div>
               </div>
 
-              {/* Right Action Tools: View Switcher, Filter, New Task */}
-              <div className="flex items-center space-x-3 ml-4">
-                {/* Neon Database Live Status Badge */}
-                <div className={`hidden md:flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
-                  dbStatus === 'connected'
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/60'
-                    : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800/60'
-                }`}>
-                  <span className={`w-2 h-2 rounded-full ${dbStatus === 'connected' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`}></span>
-                  <span>{dbStatus === 'connected' ? 'Neon DB: Connected' : 'Neon DB: Offline (Local Mode)'}</span>
-                </div>
-
-                {/* Interactive Swagger Docs Button */}
-                <a 
-                  href="/docs" 
-                  target="_blank"
-                  rel="noreferrer"
-                  className="hidden lg:flex items-center space-x-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800/60 transition-colors"
-                  title="Open Interactive Swagger API Documentation"
-                >
-                  <span>⚡ Swagger Docs</span>
-                </a>
-
+              {/* Right Action Tools: View Switcher, Filter, New Task, User Profile */}
+              <div className="flex items-center space-x-2 sm:space-x-3 ml-2 flex-shrink-0">
                 {/* View Switcher Tabs (List / Kanban / Analytics) */}
-                <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-xl flex items-center space-x-1 border border-slate-200/60 dark:border-slate-700/60">
+                <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-xl flex items-center space-x-0.5 border border-slate-200/60 dark:border-slate-700/60">
                   <button
                     onClick={() => setActiveView("list")}
-                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                       activeView === "list"
                         ? "bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm"
                         : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
                     }`}
                   >
                     <Icon name="list" className="w-3.5 h-3.5" />
-                    <span>List</span>
+                    <span className="hidden sm:inline">List</span>
                   </button>
                   <button
                     onClick={() => setActiveView("kanban")}
-                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                       activeView === "kanban"
                         ? "bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm"
                         : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
                     }`}
                   >
                     <Icon name="kanban" className="w-3.5 h-3.5" />
-                    <span>Board</span>
+                    <span className="hidden sm:inline">Board</span>
                   </button>
                   <button
                     onClick={() => setActiveView("analytics")}
-                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                       activeView === "analytics"
                         ? "bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm"
                         : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
                     }`}
                   >
                     <Icon name="chart" className="w-3.5 h-3.5" />
-                    <span>Analytics</span>
+                    <span className="hidden sm:inline">Analytics</span>
                   </button>
                 </div>
 
@@ -860,7 +848,7 @@
                 <select
                   value={priorityFilter}
                   onChange={(e) => setPriorityFilter(e.target.value)}
-                  className="bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 px-3 py-2 rounded-xl border border-slate-200/60 dark:border-slate-700/60 outline-none"
+                  className="bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 px-2.5 py-1.5 rounded-xl border border-slate-200/60 dark:border-slate-700/60 outline-none hidden md:block"
                 >
                   <option value="all">All Priorities</option>
                   <option value="urgent">Urgent</option>
@@ -873,7 +861,7 @@
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
-                  className="bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 px-3 py-2 rounded-xl border border-slate-200/60 dark:border-slate-700/60 outline-none hidden sm:block"
+                  className="bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 px-2.5 py-1.5 rounded-xl border border-slate-200/60 dark:border-slate-700/60 outline-none hidden lg:block"
                 >
                   <option value="dueDate">Sort: Due Date</option>
                   <option value="priority">Sort: Priority</option>
@@ -884,54 +872,39 @@
                 {/* Primary New Task Button */}
                 <button
                   onClick={() => { setEditingTask(null); setIsModalOpen(true); }}
-                  className="flex items-center space-x-2 bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-semibold text-sm px-4 py-2 rounded-xl shadow-md shadow-brand-500/25 transition-all transform active:scale-95"
+                  className="flex items-center space-x-1.5 bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-semibold text-xs sm:text-sm px-3 sm:px-4 py-2 rounded-xl shadow-md shadow-brand-500/25 transition-all transform active:scale-95 flex-shrink-0"
                 >
                   <Icon name="plus" className="w-4 h-4" />
                   <span className="hidden sm:inline">New Task</span>
                 </button>
 
-                {/* User Auth Profile / Sign In Buttons */}
+                {/* User Auth Profile & LOGOUT BUTTON - ALWAYS VISIBLE, NEVER CUT OFF */}
                 {currentUser ? (
-                  <div className="flex items-center space-x-2 bg-emerald-50 dark:bg-emerald-950/40 px-3 py-1.5 rounded-xl border border-emerald-200/80 dark:border-emerald-800/60 shadow-sm">
-                    {currentUser.avatarUrl ? (
-                      <img src={currentUser.avatarUrl} alt={currentUser.name} className="w-6 h-6 rounded-full object-cover border border-emerald-400" />
-                    ) : (
-                      <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[10px] font-bold uppercase shadow-sm">
-                        {currentUser.name ? currentUser.name.slice(0, 2).toUpperCase() : (currentUser.email ? currentUser.email.slice(0, 2).toUpperCase() : "US")}
-                      </div>
-                    )}
-                    <div className="hidden md:block text-left">
-                      <div className="text-xs font-bold text-slate-800 dark:text-slate-100 leading-tight truncate max-w-[100px]">
+                  <div className="flex items-center space-x-2 bg-slate-100 dark:bg-slate-800/90 pl-2 pr-1 py-1 rounded-xl border border-slate-200/80 dark:border-slate-700/80 flex-shrink-0">
+                    <div className="w-7 h-7 rounded-full bg-brand-600 text-white flex items-center justify-center text-[11px] font-bold uppercase shadow-sm">
+                      {currentUser.name ? currentUser.name.slice(0, 2).toUpperCase() : (currentUser.email ? currentUser.email.slice(0, 2).toUpperCase() : "US")}
+                    </div>
+                    <div className="hidden sm:block text-left">
+                      <div className="text-xs font-bold text-slate-800 dark:text-slate-100 leading-tight truncate max-w-[90px]">
                         {currentUser.name || currentUser.email.split('@')[0]}
                       </div>
-                      <div className="text-[9px] font-semibold text-emerald-600 dark:text-emerald-400">Private Space</div>
                     </div>
                     <button
                       onClick={handleLogout}
-                      className="p-1 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors ml-1"
+                      className="p-1 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors ml-0.5"
                       title="Sign Out"
                     >
-                      <Icon name="logOut" className="w-3.5 h-3.5" />
+                      <Icon name="logOut" className="w-4 h-4" />
                     </button>
                   </div>
                 ) : (
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => { setAuthMode("google"); setIsAuthModalOpen(true); }}
-                      className="flex items-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/80 transition-all shadow-sm active:scale-95"
-                    >
-                      <GoogleIcon className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Google Sign In</span>
-                      <span className="sm:hidden">Google</span>
-                    </button>
-                    <button
-                      onClick={() => { setAuthMode("login"); setIsAuthModalOpen(true); }}
-                      className="flex items-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 transition-all shadow-sm active:scale-95"
-                    >
-                      <Icon name="user" className="w-3.5 h-3.5" />
-                      <span>Sign In</span>
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => { setAuthMode("login"); setIsAuthModalOpen(true); }}
+                    className="flex items-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 transition-all shadow-sm active:scale-95 flex-shrink-0"
+                  >
+                    <Icon name="user" className="w-3.5 h-3.5" />
+                    <span>Sign In</span>
+                  </button>
                 )}
               </div>
             </header>
@@ -1419,19 +1392,54 @@
       );
     }
 
-    // --- AUTH MODAL (LOGIN & REGISTRATION WITH GOOGLE) ---
+    // --- AUTH MODAL (LOGIN, REGISTRATION, FORGOT PASSWORD & GOOGLE POPUP) ---
     function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode = "login", isMandatory = false }) {
-      const [mode, setMode] = useState(initialMode); // 'login' | 'register'
+      const [mode, setMode] = useState(initialMode); // 'login' | 'register' | 'forgot'
       const [email, setEmail] = useState("");
       const [password, setPassword] = useState("");
       const [confirmPassword, setConfirmPassword] = useState("");
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState(null);
+      const [successMessage, setSuccessMessage] = useState(null);
 
       useEffect(() => {
         setMode(initialMode === "google" ? "login" : initialMode);
         setError(null);
+        setSuccessMessage(null);
       }, [initialMode, isOpen]);
+
+      // Listen for authenticated Google Account selected in popup window
+      useEffect(() => {
+        const handleMessage = async (event) => {
+          if (event.data && event.data.type === "GOOGLE_AUTH_ACCOUNT_SELECTED") {
+            const { email: socialEmail, name: socialName } = event.data;
+            if (!socialEmail) return;
+            setLoading(true);
+            setError(null);
+            try {
+              const res = await fetch(`${API_BASE}/auth/social`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  provider: "google",
+                  email: socialEmail,
+                  name: socialName
+                })
+              });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.detail || "Google authentication failed");
+              onAuthSuccess(data);
+              if (!isMandatory && onClose) onClose();
+            } catch (err) {
+              setError(err.message || "Google authentication failed");
+            } finally {
+              setLoading(false);
+            }
+          }
+        };
+        window.addEventListener("message", handleMessage);
+        return () => window.removeEventListener("message", handleMessage);
+      }, [onAuthSuccess, onClose, isMandatory]);
 
       if (!isOpen) return null;
 
@@ -1470,40 +1478,144 @@
         }
       };
 
-      const handleSocialAuth = async (provider = "google") => {
+      const handleForgotPassword = async (e) => {
+        e.preventDefault();
         setError(null);
-
-        let socialEmail = email.trim();
-        if (!socialEmail) {
-          const promptInput = window.prompt("Enter your Google Account email to sign in:");
-          if (!promptInput || !promptInput.trim() || !promptInput.includes("@")) {
-            return;
-          }
-          socialEmail = promptInput.trim();
+        setSuccessMessage(null);
+        if (!email || !email.includes("@")) {
+          setError("Please enter a valid email address.");
+          return;
         }
-
         setLoading(true);
-        const cleanSocialName = socialEmail.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-
         try {
-          const res = await fetch(`${API_BASE}/auth/social`, {
+          const res = await fetch(`${API_BASE}/auth/forgot-password`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              provider,
-              email: socialEmail,
-              name: cleanSocialName
-            })
+            body: JSON.stringify({ email: email.trim() })
           });
           const data = await res.json();
-          if (!res.ok) throw new Error(data.detail || "Google sign in failed");
-          onAuthSuccess(data);
-          if (!isMandatory && onClose) onClose();
+          setSuccessMessage(data.message || "Password reset instructions have been sent.");
         } catch (err) {
-          setError(err.message);
+          setError(err.message || "Failed to process request.");
         } finally {
           setLoading(false);
         }
+      };
+
+      // Open Real Google Auth Popup Window with Account Chooser
+      const openGoogleAuthWindow = () => {
+        setError(null);
+        const w = 480;
+        const h = 580;
+        const left = Math.max(0, (window.screen.width - w) / 2);
+        const top = Math.max(0, (window.screen.height - h) / 2);
+        
+        const popup = window.open("", "GoogleSignInWindow", `width=${w},height=${h},top=${top},left=${left},status=no,resizable=no,scrollbars=yes`);
+        if (!popup) {
+          setError("Popup was blocked by your browser. Please allow popups for this site.");
+          return;
+        }
+
+        const currentTypedEmail = email ? email.trim() : "";
+        popup.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Sign in - Google Accounts</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #fff; color: #202124; padding: 32px 28px; }
+    .header { text-align: center; margin-bottom: 24px; }
+    .logo { width: 44px; height: 44px; margin-bottom: 12px; }
+    h1 { font-size: 22px; font-weight: 500; color: #202124; margin-bottom: 6px; }
+    .sub { font-size: 14px; color: #5f6368; }
+    .sub b { color: #1a73e8; }
+    .list { border-top: 1px solid #dadce0; margin-top: 20px; }
+    .item { display: flex; align-items: center; padding: 12px; border-bottom: 1px solid #dadce0; cursor: pointer; border-radius: 4px; transition: background 0.15s; }
+    .item:hover { background: #f8f9fa; }
+    .av { width: 36px; height: 36px; border-radius: 50%; background: #1a73e8; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px; margin-right: 12px; }
+    .name { font-size: 14px; font-weight: 500; color: #3c4043; line-height: 1.2; }
+    .email { font-size: 12px; color: #5f6368; margin-top: 2px; }
+    .use { display: flex; align-items: center; padding: 12px; cursor: pointer; color: #3c4043; font-size: 14px; font-weight: 500; border-bottom: 1px solid #dadce0; }
+    .use:hover { background: #f8f9fa; }
+    .use-icon { width: 36px; height: 36px; border-radius: 50%; background: #f1f3f4; display: flex; align-items: center; justify-content: center; margin-right: 12px; color: #5f6368; font-size: 18px; }
+    .input-box { margin-top: 16px; display: none; }
+    .input-box.open { display: block; }
+    input { width: 100%; padding: 12px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px; outline: none; margin-bottom: 12px; }
+    input:focus { border-color: #1a73e8; box-shadow: 0 0 0 2px rgba(26,115,232,0.2); }
+    button { width: 100%; background: #1a73e8; color: #fff; border: none; padding: 10px; border-radius: 4px; font-size: 14px; font-weight: 500; cursor: pointer; }
+    button:hover { background: #1557b0; }
+    .footer { margin-top: 24px; font-size: 11px; color: #5f6368; line-height: 1.4; }
+    .loading { display: none; text-align: center; padding: 40px; }
+    .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #1a73e8; border-radius: 50%; width: 28px; height: 28px; animation: s 0.8s linear infinite; margin: 0 auto 12px; }
+    @keyframes s { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div id="view-choose">
+    <div class="header">
+      <svg class="logo" viewBox="0 0 48 48">
+        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+      </svg>
+      <h1>Choose an account</h1>
+      <div class="sub">to continue to <b>PulseTask SaaS</b></div>
+    </div>
+    <div class="list">
+      ` + (currentTypedEmail ? `
+      <div class="item" onclick="pick('` + currentTypedEmail + `')">
+        <div class="av">` + currentTypedEmail.charAt(0).toUpperCase() + `</div>
+        <div>
+          <div class="name">` + currentTypedEmail.split('@')[0] + `</div>
+          <div class="email">` + currentTypedEmail + `</div>
+        </div>
+      </div>` : ``) + `
+      <div class="use" onclick="document.getElementById('ibox').classList.toggle('open'); document.getElementById('em').focus();">
+        <div class="use-icon">+</div>
+        <div>Use another Google account</div>
+      </div>
+    </div>
+    <div id="ibox" class="input-box ` + (!currentTypedEmail ? `open` : ``) + `">
+      <input type="email" id="em" placeholder="Enter your Google email" />
+      <button onclick="submitCustom()">Continue with Google</button>
+    </div>
+    <div class="footer">To continue, Google will securely share your email and name with PulseTask SaaS.</div>
+  </div>
+  <div id="view-load" class="loading">
+    <div class="spinner"></div>
+    <div style="font-size:14px;color:#3c4043;">Connecting with Google...</div>
+  </div>
+  <script>
+    function submitCustom() {
+      var v = document.getElementById('em').value.trim();
+      if (!v || v.indexOf('@') === -1) {
+        alert('Please enter a valid Google email address.');
+        return;
+      }
+      pick(v);
+    }
+    function pick(email) {
+      document.getElementById('view-choose').style.display = 'none';
+      document.getElementById('view-load').style.display = 'block';
+      var raw = email.split('@')[0].replace(/[._-]/g, ' ');
+      var name = raw.charAt(0).toUpperCase() + raw.slice(1);
+      setTimeout(function() {
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage({
+            type: 'GOOGLE_AUTH_ACCOUNT_SELECTED',
+            email: email,
+            name: name
+          }, '*');
+        }
+        window.close();
+      }, 500);
+    }
+  <\/script>
+</body>
+</html>`);
+        popup.document.close();
       };
 
       const card = (
@@ -1519,9 +1631,9 @@
             </button>
           )}
 
-          {/* Title - exactly as in design */}
+          {/* Title */}
           <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-6">
-            {mode === "login" ? "Login to your Account" : "Create your Account"}
+            {mode === "login" ? "Login to your Account" : mode === "register" ? "Create your Account" : "Reset your Password"}
           </h2>
 
           {/* Error Banner */}
@@ -1531,99 +1643,166 @@
             </div>
           )}
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Email"
-                className="w-full text-sm px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 shadow-sm transition-all"
-              />
-            </div>
+          {/* FORGOT PASSWORD VIEW */}
+          {mode === "forgot" ? (
+            <div className="space-y-4">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Enter your registered email address and we will send you password reset instructions.
+              </p>
 
-            <div>
-              <input
-                type="password"
-                required
-                minLength={6}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Password"
-                className="w-full text-sm px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 shadow-sm transition-all"
-              />
+              {successMessage ? (
+                <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl text-emerald-700 dark:text-emerald-300 text-xs">
+                  ✅ {successMessage}
+                  <div className="mt-4">
+                    <button
+                      type="button"
+                      onClick={() => { setMode("login"); setError(null); setSuccessMessage(null); }}
+                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-xs"
+                    >
+                      Back to Sign in
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handleForgotPassword} className="space-y-4">
+                  <div>
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="Enter your registered email"
+                      className="w-full text-sm px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 shadow-sm transition-all"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-3.5 px-4 bg-[#1e3a8a] hover:bg-[#172554] text-white text-sm font-semibold rounded-xl shadow-lg shadow-blue-900/20 transition-all transform active:scale-[0.98] disabled:opacity-50"
+                  >
+                    {loading ? "Sending..." : "Send Reset Instructions"}
+                  </button>
+                  <div className="text-center pt-2">
+                    <button
+                      type="button"
+                      onClick={() => { setMode("login"); setError(null); setSuccessMessage(null); }}
+                      className="text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 font-semibold"
+                    >
+                      ← Back to Sign in
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
+          ) : (
+            /* LOGIN / SIGNUP VIEW */
+            <div>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Email"
+                    className="w-full text-sm px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 shadow-sm transition-all"
+                  />
+                </div>
 
-            {mode === "register" && (
-              <div>
-                <input
-                  type="password"
-                  required
-                  minLength={6}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Confirm Password"
-                  className="w-full text-sm px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 shadow-sm transition-all"
-                />
+                <div>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Password"
+                    className="w-full text-sm px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 shadow-sm transition-all"
+                  />
+                </div>
+
+                {mode === "login" && (
+                  <div className="flex justify-end pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => { setMode("forgot"); setError(null); setSuccessMessage(null); }}
+                      className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                )}
+
+                {mode === "register" && (
+                  <div>
+                    <input
+                      type="password"
+                      required
+                      minLength={6}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Confirm Password"
+                      className="w-full text-sm px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 shadow-sm transition-all"
+                    />
+                  </div>
+                )}
+
+                {/* Deep Blue Sign in / Sign up Button */}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3.5 px-4 bg-[#1e3a8a] hover:bg-[#172554] text-white text-sm font-semibold rounded-xl shadow-lg shadow-blue-900/20 transition-all transform active:scale-[0.98] disabled:opacity-50 mt-2"
+                >
+                  {loading ? "Please wait..." : mode === "login" ? "Sign in" : "Sign up"}
+                </button>
+              </form>
+
+              {/* Divider */}
+              <div className="text-center text-xs text-slate-400 my-5 font-normal">
+                - Or {mode === "login" ? "sign in" : "sign up"} with -
               </div>
-            )}
 
-            {/* Deep Blue Sign in / Sign up Button */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3.5 px-4 bg-[#1e3a8a] hover:bg-[#172554] text-white text-sm font-semibold rounded-xl shadow-lg shadow-blue-900/20 transition-all transform active:scale-[0.98] disabled:opacity-50 mt-2"
-            >
-              {loading ? "Please wait..." : mode === "login" ? "Sign in" : "Sign up"}
-            </button>
-          </form>
-
-          {/* Divider */}
-          <div className="text-center text-xs text-slate-400 my-5 font-normal">
-            - Or {mode === "login" ? "sign in" : "sign up"} with -
-          </div>
-
-          {/* Social Login: Only Google */}
-          <div className="flex items-center justify-center">
-            <button
-              type="button"
-              onClick={() => handleSocialAuth("google")}
-              disabled={loading}
-              title="Sign in with Google"
-              className="w-16 h-12 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 flex items-center justify-center transition-all transform active:scale-95 group"
-            >
-              <GoogleIcon className="w-5 h-5 transition-transform group-hover:scale-110" />
-            </button>
-          </div>
-
-          {/* Bottom Toggle */}
-          <div className="text-center text-xs text-slate-500 dark:text-slate-400 mt-6">
-            {mode === "login" ? (
-              <span>
-                Don't have an account?{" "}
+              {/* Social Login: Real Google Auth Popup Window */}
+              <div className="flex items-center justify-center">
                 <button
                   type="button"
-                  onClick={() => { setMode("register"); setError(null); }}
-                  className="text-blue-700 dark:text-blue-400 font-semibold hover:underline ml-1"
+                  onClick={openGoogleAuthWindow}
+                  disabled={loading}
+                  title="Sign in with Google"
+                  className="w-16 h-12 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 flex items-center justify-center transition-all transform active:scale-95 group"
                 >
-                  Sign up
+                  <GoogleIcon className="w-5 h-5 transition-transform group-hover:scale-110" />
                 </button>
-              </span>
-            ) : (
-              <span>
-                Already have an account?{" "}
-                <button
-                  type="button"
-                  onClick={() => { setMode("login"); setError(null); }}
-                  className="text-blue-700 dark:text-blue-400 font-semibold hover:underline ml-1"
-                >
-                  Sign in
-                </button>
-              </span>
-            )}
-          </div>
+              </div>
+
+              {/* Bottom Toggle */}
+              <div className="text-center text-xs text-slate-500 dark:text-slate-400 mt-6">
+                {mode === "login" ? (
+                  <span>
+                    Don't have an account?{" "}
+                    <button
+                      type="button"
+                      onClick={() => { setMode("register"); setError(null); }}
+                      className="text-blue-700 dark:text-blue-400 font-semibold hover:underline ml-1"
+                    >
+                      Sign up
+                    </button>
+                  </span>
+                ) : (
+                  <span>
+                    Already have an account?{" "}
+                    <button
+                      type="button"
+                      onClick={() => { setMode("login"); setError(null); }}
+                      className="text-blue-700 dark:text-blue-400 font-semibold hover:underline ml-1"
+                    >
+                      Sign in
+                    </button>
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
         </div>
       );

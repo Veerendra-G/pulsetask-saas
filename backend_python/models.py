@@ -41,6 +41,9 @@ class UserLogin(BaseModel):
     email: str = Field(..., min_length=5, max_length=255, description="User email address")
     password: str = Field(..., min_length=1, max_length=128, description="User password")
 
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(..., min_length=5, max_length=255, description="Registered email address")
+
 class GoogleAuthRequest(BaseModel):
     credential: Optional[str] = Field(default=None, description="Google JWT ID token or mock token")
     email: Optional[str] = Field(default=None, description="Direct email from Google Auth popup")
