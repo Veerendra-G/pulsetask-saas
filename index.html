@@ -1406,6 +1406,62 @@
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState(null);
       const [successMessage, setSuccessMessage] = useState(null);
+      const [googleClientId, setGoogleClientId] = useState(
+        localStorage.getItem("pulsetask_google_client_id") || ""
+      );
+      const [showClientIdConfig, setShowClientIdConfig] = useState(false);
+      const [inputClientId, setInputClientId] = useState(
+        localStorage.getItem("pulsetask_google_client_id") || ""
+      );
+
+      const triggerRealGoogleAuth = () => {
+        const activeId = (googleClientId || "").trim();
+        if (!activeId) {
+          setShowClientIdConfig(true);
+          return;
+        }
+
+        if (!window.google || !window.google.accounts || !window.google.accounts.oauth2) {
+          setError("Google Identity Services is loading. Please try again in 2 seconds.");
+          return;
+        }
+
+        try {
+          const client = window.google.accounts.oauth2.initTokenClient({
+            client_id: activeId,
+            scope: "email profile openid",
+            prompt: "select_account",
+            callback: async (tokenResponse) => {
+              if (tokenResponse && tokenResponse.access_token) {
+                setLoading(true);
+                try {
+                  const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+                    headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
+                  });
+                  const profile = await res.json();
+                  if (profile.email) {
+                    await executeGoogleSignIn(profile.email, profile.name || profile.given_name, profile.picture);
+                  } else {
+                    throw new Error("Unable to read Google profile.");
+                  }
+                } catch (err) {
+                  setError("Google authentication failed: " + err.message);
+                } finally {
+                  setLoading(false);
+                }
+              }
+            },
+            error_callback: (err) => {
+              if (err && err.type !== "popup_closed") {
+                setError("Google Auth Error: " + (err.message || err.type || "Popup blocked or closed"));
+              }
+            }
+          });
+          client.requestAccessToken({ prompt: "select_account" });
+        } catch (err) {
+          setError("Could not launch Google popup: " + err.message);
+        }
+      };
 
       useEffect(() => {
         setMode(initialMode || "login");
@@ -1698,14 +1754,73 @@
             </div>
           )}
 
-          {/* GOOGLE SIGN IN VIEW - 100% CLEAN FOR CLIENTS */}
+          {/* GOOGLE SIGN IN VIEW */}
           {mode === "google" ? (
             <div className="space-y-4">
-              <div className="flex items-center space-x-2.5 p-3 rounded-2xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200/80 dark:border-blue-800/60">
-                <GoogleIcon className="w-5 h-5 flex-shrink-0" />
-                <span className="text-xs text-blue-900 dark:text-blue-200">
-                  Enter your Google email to sign in or access your private workspace.
-                </span>
+              {/* Official Google Account Chooser Launcher */}
+              <button
+                type="button"
+                onClick={triggerRealGoogleAuth}
+                disabled={loading}
+                className="w-full py-3.5 px-4 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-slate-800 dark:text-white text-sm font-semibold rounded-2xl border-2 border-slate-200 dark:border-slate-700 shadow-sm transition-all flex items-center justify-center space-x-3 group"
+              >
+                <GoogleIcon className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                <span>Choose Google Account</span>
+              </button>
+
+              {/* Show Google Client ID configuration prompt if toggled or if client ID is missing */}
+              {showClientIdConfig && (
+                <div className="p-3.5 bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-2xl text-xs space-y-2.5">
+                  <div className="font-semibold text-blue-900 dark:text-blue-200 flex items-center justify-between">
+                    <span>⚙️ Google OAuth Client ID Setup</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowClientIdConfig(false)}
+                      className="text-slate-400 hover:text-slate-600"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-blue-800/80 dark:text-blue-300 leading-relaxed">
+                    To show Google's official popup (<b>accounts.google.com</b>) with your browser's logged-in accounts, paste your Google Cloud Client ID below:
+                  </p>
+                  <input
+                    type="text"
+                    value={inputClientId}
+                    onChange={(e) => setInputClientId(e.target.value)}
+                    placeholder="xxxx.apps.googleusercontent.com"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-blue-200 dark:border-blue-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                  />
+                  <div className="flex items-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const trimmed = inputClientId.trim();
+                        localStorage.setItem("pulsetask_google_client_id", trimmed);
+                        setGoogleClientId(trimmed);
+                        setShowClientIdConfig(false);
+                        if (trimmed) {
+                          setTimeout(triggerRealGoogleAuth, 100);
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-[11px]"
+                    >
+                      Save & Launch Google
+                    </button>
+                    <a
+                      href="https://console.cloud.google.com/apis/credentials"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      Get Client ID in Google Console ↗
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              <div className="text-center text-[11px] text-slate-400 font-normal">
+                - Or continue with email -
               </div>
 
               <form
@@ -1713,33 +1828,28 @@
                   e.preventDefault();
                   if (customGoogleEmail.trim()) executeGoogleSignIn(customGoogleEmail);
                 }}
-                className="space-y-4 pt-1"
+                className="space-y-3"
               >
                 <div>
                   <input
                     type="email"
                     required
-                    autoFocus
                     value={customGoogleEmail}
                     onChange={(e) => setCustomGoogleEmail(e.target.value)}
-                    placeholder="name@gmail.com or Google Workspace email"
-                    className="w-full text-sm px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 shadow-sm transition-all"
+                    placeholder="Enter your Google account email"
+                    className="w-full text-xs px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 shadow-sm transition-all"
                   />
                 </div>
 
                 <button
                   type="submit"
                   disabled={loading || !customGoogleEmail.trim()}
-                  className="w-full py-3.5 px-4 bg-[#1e3a8a] hover:bg-[#172554] text-white text-sm font-semibold rounded-xl shadow-lg shadow-blue-900/20 transition-all transform active:scale-[0.98] disabled:opacity-50 flex items-center justify-center space-x-2"
+                  className="w-full py-3 px-4 bg-[#1e3a8a] hover:bg-[#172554] text-white text-xs font-semibold rounded-xl shadow-md shadow-blue-900/20 transition-all transform active:scale-[0.98] disabled:opacity-50 flex items-center justify-center space-x-2"
                 >
                   <GoogleIcon className="w-4 h-4" />
-                  <span>{loading ? "Authenticating with Google..." : "Continue with Google"}</span>
+                  <span>{loading ? "Authenticating..." : "Continue with Google Email"}</span>
                 </button>
               </form>
-
-              <div className="text-[11px] text-slate-400 text-center leading-relaxed">
-                By continuing, PulseTask SaaS securely provisions your private workspace and isolates your tasks.
-              </div>
 
               <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
                 <button
@@ -1751,10 +1861,10 @@
                 </button>
                 <button
                   type="button"
-                  onClick={openGoogleAuthWindow}
-                  className="text-blue-600 dark:text-blue-400 hover:underline font-medium text-[11px]"
+                  onClick={() => setShowClientIdConfig(!showClientIdConfig)}
+                  className="text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 text-[11px]"
                 >
-                  Open in popup ↗
+                  ⚙️ {googleClientId ? "Change Client ID" : "Configure Google Client ID"}
                 </button>
               </div>
             </div>
@@ -1938,7 +2048,14 @@
               <div className="flex items-center justify-center">
                 <button
                   type="button"
-                  onClick={() => { setMode("google"); setError(null); }}
+                  onClick={() => {
+                    if ((googleClientId || "").trim()) {
+                      triggerRealGoogleAuth();
+                    } else {
+                      setMode("google");
+                      setError(null);
+                    }
+                  }}
                   disabled={loading}
                   title="Sign in with Google"
                   className="w-16 h-12 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 flex items-center justify-center transition-all transform active:scale-95 group"
