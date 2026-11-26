@@ -1474,13 +1474,18 @@
         setCustomGoogleEmail("");
       }, [initialMode, isOpen]);
 
-      const executeGoogleSignIn = async (userEmail, userName) => {
+      const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+      const executeGoogleSignIn = async (userEmail, userName, userAvatar) => {
         setLoading(true);
         setError(null);
-        let normalizedEmail = (userEmail || "").trim().toLowerCase();
-        if (normalizedEmail.endsWith("@gmail")) {
-          normalizedEmail += ".com";
+        const normalizedEmail = (userEmail || "").trim().toLowerCase();
+        if (!EMAIL_REGEX.test(normalizedEmail)) {
+          setError("Invalid email format. Please enter a complete and valid email address (e.g. name@gmail.com). Incomplete emails missing a domain extension are not permitted.");
+          setLoading(false);
+          return;
         }
+
         let cleanName = userName;
         if (!cleanName) {
           const raw = normalizedEmail.split("@")[0].replace(/[._-]/g, " ");
@@ -1494,7 +1499,8 @@
             body: JSON.stringify({
               provider: "google",
               email: normalizedEmail,
-              name: cleanName
+              name: cleanName,
+              picture: userAvatar
             })
           });
           const data = await res.json();
@@ -1527,6 +1533,12 @@
         e.preventDefault();
         setError(null);
 
+        const trimmedEmail = email.trim().toLowerCase();
+        if (!EMAIL_REGEX.test(trimmedEmail)) {
+          setError("Please enter a valid, complete email address with a domain (e.g. name@gmail.com). Incomplete emails missing a domain extension are not permitted.");
+          return;
+        }
+
         if (mode === "register" && password !== confirmPassword) {
           setError("Passwords do not match. Please re-enter.");
           return;
@@ -1534,10 +1546,10 @@
 
         setLoading(true);
         const endpoint = mode === "login" ? `${API_BASE}/auth/login` : `${API_BASE}/auth/register`;
-        const cleanName = email.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+        const cleanName = trimmedEmail.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
         const payload = mode === "login" 
-          ? { email: email.trim(), password }
-          : { email: email.trim(), password, name: cleanName };
+          ? { email: trimmedEmail, password }
+          : { email: trimmedEmail, password, name: cleanName };
 
         try {
           const res = await fetch(endpoint, {
@@ -1562,8 +1574,9 @@
         e.preventDefault();
         setError(null);
         setSuccessMessage(null);
-        if (!email || !email.includes("@")) {
-          setError("Please enter a valid email address.");
+        const trimmedEmail = email.trim().toLowerCase();
+        if (!EMAIL_REGEX.test(trimmedEmail)) {
+          setError("Please enter a valid, complete email address (e.g. name@gmail.com).");
           return;
         }
         setLoading(true);
@@ -1571,7 +1584,7 @@
           const res = await fetch(`${API_BASE}/auth/forgot-password`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: email.trim() })
+            body: JSON.stringify({ email: trimmedEmail })
           });
           const data = await res.json();
           if (!res.ok) {
@@ -1826,7 +1839,12 @@
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  if (customGoogleEmail.trim()) executeGoogleSignIn(customGoogleEmail);
+                  const trimmed = (customGoogleEmail || "").trim().toLowerCase();
+                  if (!EMAIL_REGEX.test(trimmed)) {
+                    setError("⚠️ Invalid email format. Please enter a complete Google email (e.g. name@gmail.com). Incomplete emails missing a domain extension are not permitted.");
+                    return;
+                  }
+                  executeGoogleSignIn(trimmed);
                 }}
                 className="space-y-3"
               >

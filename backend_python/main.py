@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import time
 from pathlib import Path
@@ -18,6 +19,25 @@ from auth import (
     hash_password, verify_password, create_access_token,
     get_current_user_optional, get_current_user_required
 )
+
+EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
+
+def validate_email_format(email: str) -> str:
+    if not email:
+        raise HTTPException(status_code=400, detail="A valid email address is required.")
+    cleaned = email.strip().lower()
+    if not EMAIL_REGEX.match(cleaned):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid email format. Please provide a complete email address (e.g. name@gmail.com)."
+        )
+    domain_part = cleaned.split("@")[1]
+    if "." not in domain_part or len(domain_part.split(".")[-1]) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid email domain. Please enter a valid email address with a domain extension (e.g. name@gmail.com)."
+        )
+    return cleaned
 
 app = FastAPI(
     title="PulseTask FastAPI Backend",
@@ -77,9 +97,7 @@ def health_check():
 
 @router.post("/auth/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED, tags=["Authentication"])
 def register(user_data: UserRegister):
-    email = user_data.email.strip().lower()
-    if not email or "@" not in email:
-        raise HTTPException(status_code=400, detail="A valid email address is required.")
+    email = validate_email_format(user_data.email)
     if len(user_data.password) < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
 
@@ -123,7 +141,7 @@ def register(user_data: UserRegister):
 
 @router.post("/auth/login", response_model=AuthResponse, tags=["Authentication"])
 def login(creds: UserLogin):
-    email = creds.email.strip().lower()
+    email = validate_email_format(creds.email)
     try:
         conn = get_db_connection()
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -152,9 +170,7 @@ def login(creds: UserLogin):
 
 @router.post("/auth/forgot-password", tags=["Authentication"])
 def forgot_password(payload: ForgotPasswordRequest):
-    email = payload.email.strip().lower()
-    if not email or "@" not in email:
-        raise HTTPException(status_code=400, detail="A valid email address is required.")
+    email = validate_email_format(payload.email)
     
     # Check if user exists in database
     user_row = None
@@ -178,7 +194,7 @@ def forgot_password(payload: ForgotPasswordRequest):
 
 @router.post("/auth/reset-password", tags=["Authentication"])
 def reset_password(payload: ResetPasswordRequest):
-    email = payload.email.strip().lower()
+    email = validate_email_format(payload.email)
     new_pwd = payload.new_password
     if not new_pwd or len(new_pwd) < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
@@ -225,13 +241,8 @@ def social_auth(payload: SocialAuthRequest):
         except Exception as e:
             print(f"Warning decoding Google credential: {e}")
 
-    # Normalize email (handle test@gmail -> test@gmail.com)
-    if email.endswith("@gmail"):
-        email = email + ".com"
-
-    # Require valid email for social authentication (never hardcoded to any user)
-    if not email or "@" not in email:
-        raise HTTPException(status_code=400, detail="A valid email address is required for social authentication.")
+    # Strictly validate email format (never auto-append or allow invalid email like test@gmail)
+    email = validate_email_format(email)
 
     if not name:
         name = email.split("@")[0].replace(".", " ").replace("_", " ").title()
@@ -303,8 +314,7 @@ def google_auth(payload: GoogleAuthRequest):
         except Exception as e:
             print(f"Warning decoding Google credential: {e}")
 
-    if not email or "@" not in email:
-        raise HTTPException(status_code=400, detail="Invalid Google authentication: valid email is required.")
+    email = validate_email_format(email)
 
     if not name:
         name = email.split("@")[0].capitalize()
