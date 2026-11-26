@@ -56,7 +56,7 @@ class GoogleAuthRequest(BaseModel):
     picture: Optional[str] = Field(default=None, description="Google user avatar URL")
 
 class SocialAuthRequest(BaseModel):
-    provider: str = Field(default="google", description="Provider name: google, facebook, or twitter")
+    provider: str = Field(default="google", description="Social provider name: google")
     credential: Optional[str] = Field(default=None, description="Token or credential")
     email: Optional[str] = Field(default=None, description="User email")
     name: Optional[str] = Field(default=None, description="Display name")
