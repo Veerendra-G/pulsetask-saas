@@ -12,7 +12,7 @@ from psycopg2.extras import RealDictCursor
 from database import get_db_connection, init_db
 from models import (
     TaskCreate, TaskUpdate, TaskResponse,
-    UserRegister, UserLogin, UserResponse, AuthResponse
+    UserRegister, UserLogin, GoogleAuthRequest, UserResponse, AuthResponse
 )
 from auth import (
     hash_password, verify_password, create_access_token,
@@ -150,12 +150,86 @@ def login(creds: UserLogin):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
 
+@router.post("/auth/google", response_model=AuthResponse, tags=["Authentication"])
+def google_auth(payload: GoogleAuthRequest):
+    email = (payload.email or "").strip().lower()
+    name = (payload.name or "").strip()
+    picture = payload.picture
+
+    # If Google credential JWT is provided from GIS client, decode payload safely
+    if payload.credential:
+        try:
+            import base64
+            parts = payload.credential.split(".")
+            if len(parts) >= 2:
+                payload_b64 = parts[1]
+                payload_b64 += "=" * (-len(payload_b64) % 4)
+                decoded_bytes = base64.urlsafe_b64decode(payload_b64)
+                token_info = json.loads(decoded_bytes.decode("utf-8"))
+                email = token_info.get("email", email).strip().lower()
+                name = token_info.get("name", token_info.get("given_name", name)).strip()
+                picture = token_info.get("picture", picture)
+        except Exception as e:
+            print(f"Warning decoding Google credential: {e}")
+
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Invalid Google authentication: valid email is required.")
+
+    if not name:
+        name = email.split("@")[0].capitalize()
+
+    try:
+        conn = get_db_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Check if user already exists
+            cur.execute("SELECT * FROM users WHERE email = %s;", (email,))
+            user_row = cur.fetchone()
+
+            if not user_row:
+                # Auto-register new Google user
+                user_id = f"user-google-{int(time.time() * 1000)}"
+                dummy_hash = f"google_oauth_{int(time.time())}"
+                cur.execute("""
+                    INSERT INTO users (id, email, password_hash, name, avatar_url, provider)
+                    VALUES (%s, %s, %s, %s, %s, 'google')
+                    RETURNING id, email, name, avatar_url, provider, created_at;
+                """, (user_id, email, dummy_hash, name, picture))
+                user_row = cur.fetchone()
+                conn.commit()
+            else:
+                if picture and not user_row.get("avatar_url"):
+                    try:
+                        cur.execute("UPDATE users SET avatar_url = %s WHERE id = %s;", (picture, user_row["id"]))
+                        conn.commit()
+                    except Exception:
+                        pass
+
+            conn.close()
+
+            token = create_access_token(user_id=user_row["id"], email=user_row["email"], name=user_row["name"])
+            return {
+                "token": token,
+                "token_type": "bearer",
+                "user": {
+                    "id": user_row["id"],
+                    "email": user_row["email"],
+                    "name": user_row["name"] or "",
+                    "avatarUrl": picture or user_row.get("avatar_url"),
+                    "provider": user_row.get("provider") or "google",
+                    "createdAt": user_row.get("created_at")
+                }
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Google sign in failed: {str(e)}")
+
 @router.get("/auth/me", response_model=UserResponse, tags=["Authentication"])
 def get_current_user_profile(current_user: dict = Depends(get_current_user_required)):
     try:
         conn = get_db_connection()
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT id, email, name, created_at FROM users WHERE id = %s;", (current_user["id"],))
+            cur.execute("SELECT id, email, name, avatar_url, provider, created_at FROM users WHERE id = %s;", (current_user["id"],))
             user_row = cur.fetchone()
             conn.close()
             if not user_row:
@@ -164,6 +238,8 @@ def get_current_user_profile(current_user: dict = Depends(get_current_user_requi
                 "id": user_row["id"],
                 "email": user_row["email"],
                 "name": user_row["name"] or "",
+                "avatarUrl": user_row.get("avatar_url"),
+                "provider": user_row.get("provider") or "local",
                 "createdAt": user_row["created_at"]
             }
     except HTTPException:
@@ -181,10 +257,10 @@ def get_tasks(current_user: Optional[dict] = Depends(get_current_user_optional))
         conn = get_db_connection()
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             if current_user:
-                # Return tasks belonging to this user, plus general demo tasks if user has none
+                # Logged in: Return ONLY this user's private tasks (strictly isolated)
                 cur.execute("""
                     SELECT * FROM tasks 
-                    WHERE user_id = %s OR user_id IS NULL 
+                    WHERE user_id = %s 
                     ORDER BY created_at DESC;
                 """, (current_user["id"],))
             else:
@@ -321,9 +397,9 @@ def clear_completed_tasks(current_user: Optional[dict] = Depends(get_current_use
         conn = get_db_connection()
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             if current_user:
-                cur.execute("DELETE FROM tasks WHERE status = 'completed' AND (user_id = %s OR user_id IS NULL);", (current_user["id"],))
+                cur.execute("DELETE FROM tasks WHERE status = 'completed' AND user_id = %s;", (current_user["id"],))
             else:
-                cur.execute("DELETE FROM tasks WHERE status = 'completed';")
+                cur.execute("DELETE FROM tasks WHERE status = 'completed' AND user_id IS NULL;")
             count = cur.rowcount
             conn.commit()
             conn.close()

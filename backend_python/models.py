@@ -41,10 +41,18 @@ class UserLogin(BaseModel):
     email: str = Field(..., min_length=5, max_length=255, description="User email address")
     password: str = Field(..., min_length=1, max_length=128, description="User password")
 
+class GoogleAuthRequest(BaseModel):
+    credential: Optional[str] = Field(default=None, description="Google JWT ID token or mock token")
+    email: Optional[str] = Field(default=None, description="Direct email from Google Auth popup")
+    name: Optional[str] = Field(default=None, description="Display name from Google Auth popup")
+    picture: Optional[str] = Field(default=None, description="Google user avatar URL")
+
 class UserResponse(BaseModel):
     id: str
     email: str
     name: Optional[str] = ""
+    avatarUrl: Optional[str] = None
+    provider: Optional[str] = "local"
     createdAt: Optional[datetime] = None
 
 class AuthResponse(BaseModel):
