@@ -173,22 +173,12 @@ def social_auth(payload: SocialAuthRequest):
         except Exception as e:
             print(f"Warning decoding Google credential: {e}")
 
-    # Fallback email & names for social providers if not passed
-    if not email:
-        if provider == "google":
-            email = "gandlaveerendra1234@gmail.com"
-            name = name or "Veerendra"
-        elif provider == "facebook":
-            email = "veerendra.fb@pulsetask.com"
-            name = name or "Veerendra (Facebook)"
-        elif provider == "twitter":
-            email = "veerendra.x@pulsetask.com"
-            name = name or "Veerendra (Twitter)"
-        else:
-            raise HTTPException(status_code=400, detail="Email is required for social authentication.")
+    # Require valid email for social authentication (never hardcoded to any user)
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="A valid email address is required for social authentication.")
 
     if not name:
-        name = email.split("@")[0].capitalize()
+        name = email.split("@")[0].replace(".", " ").replace("_", " ").title()
 
     try:
         conn = get_db_connection()
