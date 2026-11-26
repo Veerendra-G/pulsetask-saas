@@ -1624,39 +1624,11 @@
       <h1>Choose an account</h1>
       <div class="sub">to continue to <b>PulseTask SaaS</b></div>
     </div>
-    <div class="list">
-      <div class="item" onclick="pick('test@gmail.com')">
-        <div class="av">T</div>
-        <div>
-          <div class="name">Test User (Recommended)</div>
-          <div class="email">test@gmail.com</div>
-        </div>
-      </div>
-      <div class="item" onclick="pick('gandlaveerendra1234@gmail.com')">
-        <div class="av">V</div>
-        <div>
-          <div class="name">Veerendra Gandla</div>
-          <div class="email">gandlaveerendra1234@gmail.com</div>
-        </div>
-      </div>
-      ` + (currentTypedEmail && currentTypedEmail !== 'test@gmail.com' && currentTypedEmail !== 'gandlaveerendra1234@gmail.com' ? `
-      <div class="item" onclick="pick('` + currentTypedEmail + `')">
-        <div class="av">` + currentTypedEmail.charAt(0).toUpperCase() + `</div>
-        <div>
-          <div class="name">` + currentTypedEmail.split('@')[0] + `</div>
-          <div class="email">` + currentTypedEmail + `</div>
-        </div>
-      </div>` : ``) + `
-      <div class="use" onclick="document.getElementById('ibox').classList.toggle('open'); document.getElementById('em').focus();">
-        <div class="use-icon">+</div>
-        <div>Use another Google account</div>
-      </div>
+    <div style="margin-top:20px;">
+      <input type="email" id="em" placeholder="Enter your Google email (e.g. name@gmail.com)" autofocus style="width:100%;box-sizing:border-box;padding:14px;border:1px solid #dadce0;border-radius:8px;font-size:14px;outline:none;" />
+      <button onclick="submitCustom()" style="width:100%;background:#1a73e8;color:#fff;border:none;padding:12px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;margin-top:14px;">Continue with Google</button>
     </div>
-    <div id="ibox" class="input-box">
-      <input type="email" id="em" placeholder="Enter your Google email (e.g. test@gmail)" />
-      <button onclick="submitCustom()">Continue with Google</button>
-    </div>
-    <div class="footer">To continue, Google will securely share your email and name with PulseTask SaaS.</div>
+    <div class="footer">To continue, Google will securely share your verified profile with PulseTask SaaS.</div>
   </div>
   <div id="view-load" class="loading">
     <div class="spinner"></div>
@@ -1726,88 +1698,56 @@
             </div>
           )}
 
-          {/* GOOGLE IN-APP ACCOUNT CHOOSER VIEW */}
+          {/* GOOGLE SIGN IN VIEW - 100% CLEAN FOR CLIENTS */}
           {mode === "google" ? (
             <div className="space-y-4">
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Choose an account to continue to <span className="font-semibold text-blue-600 dark:text-blue-400">PulseTask SaaS</span>
-              </p>
-
-              <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800 bg-slate-50/70 dark:bg-slate-900/40">
-                {/* 1-Click test@gmail.com */}
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={() => executeGoogleSignIn("test@gmail.com", "Test User")}
-                  className="w-full flex items-center space-x-3 p-3.5 hover:bg-white dark:hover:bg-slate-800 transition-all text-left group"
-                >
-                  <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-sm flex-shrink-0 group-hover:scale-105 transition-transform">
-                    T
-                  </div>
-                  <div className="flex-1 truncate">
-                    <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center space-x-1.5">
-                      <span>Test User</span>
-                      <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.2 rounded">Recommended</span>
-                    </div>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400">test@gmail.com</div>
-                  </div>
-                  <Icon name="arrowRight" className="w-4 h-4 text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors" />
-                </button>
-
-                {/* 1-Click gandlaveerendra1234@gmail.com */}
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={() => executeGoogleSignIn("gandlaveerendra1234@gmail.com", "Veerendra")}
-                  className="w-full flex items-center space-x-3 p-3.5 hover:bg-white dark:hover:bg-slate-800 transition-all text-left group"
-                >
-                  <div className="w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shadow-sm flex-shrink-0 group-hover:scale-105 transition-transform">
-                    V
-                  </div>
-                  <div className="flex-1 truncate">
-                    <div className="text-xs font-bold text-slate-900 dark:text-white">Veerendra Gandla</div>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400">gandlaveerendra1234@gmail.com</div>
-                  </div>
-                  <Icon name="arrowRight" className="w-4 h-4 text-slate-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors" />
-                </button>
+              <div className="flex items-center space-x-2.5 p-3 rounded-2xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200/80 dark:border-blue-800/60">
+                <GoogleIcon className="w-5 h-5 flex-shrink-0" />
+                <span className="text-xs text-blue-900 dark:text-blue-200">
+                  Enter your Google email to sign in or access your private workspace.
+                </span>
               </div>
 
-              {/* Enter custom Google email */}
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  if (customGoogleEmail) executeGoogleSignIn(customGoogleEmail);
+                  if (customGoogleEmail.trim()) executeGoogleSignIn(customGoogleEmail);
                 }}
-                className="space-y-2 pt-1"
+                className="space-y-4 pt-1"
               >
                 <div>
                   <input
-                    type="text"
+                    type="email"
+                    required
+                    autoFocus
                     value={customGoogleEmail}
                     onChange={(e) => setCustomGoogleEmail(e.target.value)}
-                    placeholder="Or enter any Google email (e.g. test@gmail)"
-                    className="w-full text-xs px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40"
+                    placeholder="name@gmail.com or Google Workspace email"
+                    className="w-full text-sm px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 shadow-sm transition-all"
                   />
                 </div>
-                {customGoogleEmail && (
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full py-2.5 bg-[#1e3a8a] hover:bg-[#172554] text-white text-xs font-semibold rounded-xl transition-all shadow-md"
-                  >
-                    {loading ? "Signing in..." : `Sign in with ${customGoogleEmail}`}
-                  </button>
-                )}
+
+                <button
+                  type="submit"
+                  disabled={loading || !customGoogleEmail.trim()}
+                  className="w-full py-3.5 px-4 bg-[#1e3a8a] hover:bg-[#172554] text-white text-sm font-semibold rounded-xl shadow-lg shadow-blue-900/20 transition-all transform active:scale-[0.98] disabled:opacity-50 flex items-center justify-center space-x-2"
+                >
+                  <GoogleIcon className="w-4 h-4" />
+                  <span>{loading ? "Authenticating with Google..." : "Continue with Google"}</span>
+                </button>
               </form>
 
-              {/* Footer navigation */}
+              <div className="text-[11px] text-slate-400 text-center leading-relaxed">
+                By continuing, PulseTask SaaS securely provisions your private workspace and isolates your tasks.
+              </div>
+
               <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
                 <button
                   type="button"
                   onClick={() => { setMode("login"); setError(null); }}
                   className="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 font-semibold"
                 >
-                  ← Back to Sign in
+                  ← Back to standard Sign in
                 </button>
                 <button
                   type="button"
