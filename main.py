@@ -225,6 +225,10 @@ def social_auth(payload: SocialAuthRequest):
         except Exception as e:
             print(f"Warning decoding Google credential: {e}")
 
+    # Normalize email (handle test@gmail -> test@gmail.com)
+    if email.endswith("@gmail"):
+        email = email + ".com"
+
     # Require valid email for social authentication (never hardcoded to any user)
     if not email or "@" not in email:
         raise HTTPException(status_code=400, detail="A valid email address is required for social authentication.")

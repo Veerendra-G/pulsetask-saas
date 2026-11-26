@@ -1402,19 +1402,55 @@
       const [newPassword, setNewPassword] = useState("");
       const [confirmNewPassword, setConfirmNewPassword] = useState("");
       const [resetSuccess, setResetSuccess] = useState(false);
+      const [customGoogleEmail, setCustomGoogleEmail] = useState("");
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState(null);
       const [successMessage, setSuccessMessage] = useState(null);
 
       useEffect(() => {
-        setMode(initialMode === "google" ? "login" : initialMode);
+        setMode(initialMode || "login");
         setError(null);
         setSuccessMessage(null);
         setResetStep(1);
         setNewPassword("");
         setConfirmNewPassword("");
         setResetSuccess(false);
+        setCustomGoogleEmail("");
       }, [initialMode, isOpen]);
+
+      const executeGoogleSignIn = async (userEmail, userName) => {
+        setLoading(true);
+        setError(null);
+        let normalizedEmail = (userEmail || "").trim().toLowerCase();
+        if (normalizedEmail.endsWith("@gmail")) {
+          normalizedEmail += ".com";
+        }
+        let cleanName = userName;
+        if (!cleanName) {
+          const raw = normalizedEmail.split("@")[0].replace(/[._-]/g, " ");
+          cleanName = raw.charAt(0).toUpperCase() + raw.slice(1);
+        }
+
+        try {
+          const res = await fetch(`${API_BASE}/auth/social`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              provider: "google",
+              email: normalizedEmail,
+              name: cleanName
+            })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.detail || "Google authentication failed");
+          onAuthSuccess(data);
+          if (!isMandatory && onClose) onClose();
+        } catch (err) {
+          setError(err.message || "Google sign in failed. Please try again.");
+        } finally {
+          setLoading(false);
+        }
+      };
 
       // Listen for authenticated Google Account selected in popup window
       useEffect(() => {
@@ -1422,27 +1458,7 @@
           if (event.data && event.data.type === "GOOGLE_AUTH_ACCOUNT_SELECTED") {
             const { email: socialEmail, name: socialName } = event.data;
             if (!socialEmail) return;
-            setLoading(true);
-            setError(null);
-            try {
-              const res = await fetch(`${API_BASE}/auth/social`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  provider: "google",
-                  email: socialEmail,
-                  name: socialName
-                })
-              });
-              const data = await res.json();
-              if (!res.ok) throw new Error(data.detail || "Google authentication failed");
-              onAuthSuccess(data);
-              if (!isMandatory && onClose) onClose();
-            } catch (err) {
-              setError(err.message || "Google authentication failed");
-            } finally {
-              setLoading(false);
-            }
+            executeGoogleSignIn(socialEmail, socialName);
           }
         };
         window.addEventListener("message", handleMessage);
@@ -1609,7 +1625,21 @@
       <div class="sub">to continue to <b>PulseTask SaaS</b></div>
     </div>
     <div class="list">
-      ` + (currentTypedEmail ? `
+      <div class="item" onclick="pick('test@gmail.com')">
+        <div class="av">T</div>
+        <div>
+          <div class="name">Test User (Recommended)</div>
+          <div class="email">test@gmail.com</div>
+        </div>
+      </div>
+      <div class="item" onclick="pick('gandlaveerendra1234@gmail.com')">
+        <div class="av">V</div>
+        <div>
+          <div class="name">Veerendra Gandla</div>
+          <div class="email">gandlaveerendra1234@gmail.com</div>
+        </div>
+      </div>
+      ` + (currentTypedEmail && currentTypedEmail !== 'test@gmail.com' && currentTypedEmail !== 'gandlaveerendra1234@gmail.com' ? `
       <div class="item" onclick="pick('` + currentTypedEmail + `')">
         <div class="av">` + currentTypedEmail.charAt(0).toUpperCase() + `</div>
         <div>
@@ -1622,8 +1652,8 @@
         <div>Use another Google account</div>
       </div>
     </div>
-    <div id="ibox" class="input-box ` + (!currentTypedEmail ? `open` : ``) + `">
-      <input type="email" id="em" placeholder="Enter your Google email" />
+    <div id="ibox" class="input-box">
+      <input type="email" id="em" placeholder="Enter your Google email (e.g. test@gmail)" />
       <button onclick="submitCustom()">Continue with Google</button>
     </div>
     <div class="footer">To continue, Google will securely share your email and name with PulseTask SaaS.</div>
@@ -1644,18 +1674,20 @@
     function pick(email) {
       document.getElementById('view-choose').style.display = 'none';
       document.getElementById('view-load').style.display = 'block';
-      var raw = email.split('@')[0].replace(/[._-]/g, ' ');
+      var emailClean = email.trim().toLowerCase();
+      if (emailClean.endsWith('@gmail')) { emailClean += '.com'; }
+      var raw = emailClean.split('@')[0].replace(/[._-]/g, ' ');
       var name = raw.charAt(0).toUpperCase() + raw.slice(1);
       setTimeout(function() {
         if (window.opener && !window.opener.closed) {
           window.opener.postMessage({
             type: 'GOOGLE_AUTH_ACCOUNT_SELECTED',
-            email: email,
+            email: emailClean,
             name: name
           }, '*');
         }
         window.close();
-      }, 500);
+      }, 400);
     }
   <\/script>
 </body>
@@ -1678,7 +1710,13 @@
 
           {/* Title */}
           <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-6">
-            {mode === "login" ? "Login to your Account" : mode === "register" ? "Create your Account" : "Reset your Password"}
+            {mode === "login" 
+              ? "Login to your Account" 
+              : mode === "register" 
+              ? "Create your Account" 
+              : mode === "forgot" 
+              ? "Reset your Password" 
+              : "Sign in with Google"}
           </h2>
 
           {/* Error Banner */}
@@ -1688,8 +1726,99 @@
             </div>
           )}
 
-          {/* FORGOT & RESET PASSWORD VIEW */}
-          {mode === "forgot" ? (
+          {/* GOOGLE IN-APP ACCOUNT CHOOSER VIEW */}
+          {mode === "google" ? (
+            <div className="space-y-4">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Choose an account to continue to <span className="font-semibold text-blue-600 dark:text-blue-400">PulseTask SaaS</span>
+              </p>
+
+              <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800 bg-slate-50/70 dark:bg-slate-900/40">
+                {/* 1-Click test@gmail.com */}
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => executeGoogleSignIn("test@gmail.com", "Test User")}
+                  className="w-full flex items-center space-x-3 p-3.5 hover:bg-white dark:hover:bg-slate-800 transition-all text-left group"
+                >
+                  <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-sm flex-shrink-0 group-hover:scale-105 transition-transform">
+                    T
+                  </div>
+                  <div className="flex-1 truncate">
+                    <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center space-x-1.5">
+                      <span>Test User</span>
+                      <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.2 rounded">Recommended</span>
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">test@gmail.com</div>
+                  </div>
+                  <Icon name="arrowRight" className="w-4 h-4 text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors" />
+                </button>
+
+                {/* 1-Click gandlaveerendra1234@gmail.com */}
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => executeGoogleSignIn("gandlaveerendra1234@gmail.com", "Veerendra")}
+                  className="w-full flex items-center space-x-3 p-3.5 hover:bg-white dark:hover:bg-slate-800 transition-all text-left group"
+                >
+                  <div className="w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shadow-sm flex-shrink-0 group-hover:scale-105 transition-transform">
+                    V
+                  </div>
+                  <div className="flex-1 truncate">
+                    <div className="text-xs font-bold text-slate-900 dark:text-white">Veerendra Gandla</div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">gandlaveerendra1234@gmail.com</div>
+                  </div>
+                  <Icon name="arrowRight" className="w-4 h-4 text-slate-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors" />
+                </button>
+              </div>
+
+              {/* Enter custom Google email */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (customGoogleEmail) executeGoogleSignIn(customGoogleEmail);
+                }}
+                className="space-y-2 pt-1"
+              >
+                <div>
+                  <input
+                    type="text"
+                    value={customGoogleEmail}
+                    onChange={(e) => setCustomGoogleEmail(e.target.value)}
+                    placeholder="Or enter any Google email (e.g. test@gmail)"
+                    className="w-full text-xs px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40"
+                  />
+                </div>
+                {customGoogleEmail && (
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-2.5 bg-[#1e3a8a] hover:bg-[#172554] text-white text-xs font-semibold rounded-xl transition-all shadow-md"
+                  >
+                    {loading ? "Signing in..." : `Sign in with ${customGoogleEmail}`}
+                  </button>
+                )}
+              </form>
+
+              {/* Footer navigation */}
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
+                <button
+                  type="button"
+                  onClick={() => { setMode("login"); setError(null); }}
+                  className="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 font-semibold"
+                >
+                  ← Back to Sign in
+                </button>
+                <button
+                  type="button"
+                  onClick={openGoogleAuthWindow}
+                  className="text-blue-600 dark:text-blue-400 hover:underline font-medium text-[11px]"
+                >
+                  Open in popup ↗
+                </button>
+              </div>
+            </div>
+          ) : mode === "forgot" ? (
             <div className="space-y-4">
               {resetSuccess ? (
                 <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl text-emerald-700 dark:text-emerald-300 text-xs">
@@ -1865,11 +1994,11 @@
                 - Or {mode === "login" ? "sign in" : "sign up"} with -
               </div>
 
-              {/* Social Login: Real Google Auth Popup Window */}
+              {/* Social Login: Google Account Chooser */}
               <div className="flex items-center justify-center">
                 <button
                   type="button"
-                  onClick={openGoogleAuthWindow}
+                  onClick={() => { setMode("google"); setError(null); }}
                   disabled={loading}
                   title="Sign in with Google"
                   className="w-16 h-12 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 flex items-center justify-center transition-all transform active:scale-95 group"
