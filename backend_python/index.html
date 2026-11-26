@@ -1398,6 +1398,10 @@
       const [email, setEmail] = useState("");
       const [password, setPassword] = useState("");
       const [confirmPassword, setConfirmPassword] = useState("");
+      const [resetStep, setResetStep] = useState(1); // 1 = enter email, 2 = enter new password
+      const [newPassword, setNewPassword] = useState("");
+      const [confirmNewPassword, setConfirmNewPassword] = useState("");
+      const [resetSuccess, setResetSuccess] = useState(false);
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState(null);
       const [successMessage, setSuccessMessage] = useState(null);
@@ -1406,6 +1410,10 @@
         setMode(initialMode === "google" ? "login" : initialMode);
         setError(null);
         setSuccessMessage(null);
+        setResetStep(1);
+        setNewPassword("");
+        setConfirmNewPassword("");
+        setResetSuccess(false);
       }, [initialMode, isOpen]);
 
       // Listen for authenticated Google Account selected in popup window
@@ -1494,9 +1502,46 @@
             body: JSON.stringify({ email: email.trim() })
           });
           const data = await res.json();
-          setSuccessMessage(data.message || "Password reset instructions have been sent.");
+          if (!res.ok) {
+            throw new Error(data.detail || "Account not found with this email.");
+          }
+          setSuccessMessage(data.message || `Account verified for ${email.trim()}.`);
+          setResetStep(2);
         } catch (err) {
           setError(err.message || "Failed to process request.");
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const handleResetPassword = async (e) => {
+        e.preventDefault();
+        setError(null);
+        if (newPassword !== confirmNewPassword) {
+          setError("New passwords do not match. Please re-enter.");
+          return;
+        }
+        if (newPassword.length < 6) {
+          setError("Password must be at least 6 characters.");
+          return;
+        }
+        setLoading(true);
+        try {
+          const res = await fetch(`${API_BASE}/auth/reset-password`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: email.trim(),
+              new_password: newPassword
+            })
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(data.detail || "Password reset failed.");
+          }
+          setResetSuccess(true);
+        } catch (err) {
+          setError(err.message || "Failed to reset password.");
         } finally {
           setLoading(false);
         }
@@ -1643,55 +1688,113 @@
             </div>
           )}
 
-          {/* FORGOT PASSWORD VIEW */}
+          {/* FORGOT & RESET PASSWORD VIEW */}
           {mode === "forgot" ? (
             <div className="space-y-4">
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Enter your registered email address and we will send you password reset instructions.
-              </p>
-
-              {successMessage ? (
+              {resetSuccess ? (
                 <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl text-emerald-700 dark:text-emerald-300 text-xs">
-                  ✅ {successMessage}
+                  <div className="font-bold text-sm mb-1">✅ Password Updated!</div>
+                  Your password has been successfully reset. You can now log in with your new password.
                   <div className="mt-4">
                     <button
                       type="button"
-                      onClick={() => { setMode("login"); setError(null); setSuccessMessage(null); }}
+                      onClick={() => {
+                        setMode("login");
+                        setResetStep(1);
+                        setResetSuccess(false);
+                        setPassword("");
+                        setNewPassword("");
+                        setConfirmNewPassword("");
+                        setError(null);
+                      }}
                       className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-xs"
                     >
-                      Back to Sign in
+                      Sign in with New Password
                     </button>
                   </div>
                 </div>
-              ) : (
-                <form onSubmit={handleForgotPassword} className="space-y-4">
-                  <div>
-                    <input
-                      type="email"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="Enter your registered email"
-                      className="w-full text-sm px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 shadow-sm transition-all"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full py-3.5 px-4 bg-[#1e3a8a] hover:bg-[#172554] text-white text-sm font-semibold rounded-xl shadow-lg shadow-blue-900/20 transition-all transform active:scale-[0.98] disabled:opacity-50"
-                  >
-                    {loading ? "Sending..." : "Send Reset Instructions"}
-                  </button>
-                  <div className="text-center pt-2">
+              ) : resetStep === 1 ? (
+                <div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+                    Enter your registered email address to verify your account and set a new password.
+                  </p>
+                  <form onSubmit={handleForgotPassword} className="space-y-4">
+                    <div>
+                      <input
+                        type="email"
+                        required
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="Enter your registered email"
+                        className="w-full text-sm px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 shadow-sm transition-all"
+                      />
+                    </div>
                     <button
-                      type="button"
-                      onClick={() => { setMode("login"); setError(null); setSuccessMessage(null); }}
-                      className="text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 font-semibold"
+                      type="submit"
+                      disabled={loading}
+                      className="w-full py-3.5 px-4 bg-[#1e3a8a] hover:bg-[#172554] text-white text-sm font-semibold rounded-xl shadow-lg shadow-blue-900/20 transition-all transform active:scale-[0.98] disabled:opacity-50"
                     >
-                      ← Back to Sign in
+                      {loading ? "Verifying..." : "Continue to Reset Password"}
                     </button>
+                    <div className="text-center pt-2">
+                      <button
+                        type="button"
+                        onClick={() => { setMode("login"); setError(null); }}
+                        className="text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 font-semibold"
+                      >
+                        ← Back to Sign in
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              ) : (
+                /* Step 2: Set New Password Form */
+                <div>
+                  <div className="mb-3 p-2.5 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 rounded-xl text-blue-700 dark:text-blue-300 text-xs flex items-center space-x-2">
+                    <span>🔒</span>
+                    <span className="truncate">Setting new password for <b>{email}</b></span>
                   </div>
-                </form>
+                  <form onSubmit={handleResetPassword} className="space-y-4">
+                    <div>
+                      <input
+                        type="password"
+                        required
+                        minLength={6}
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="New Password (min 6 characters)"
+                        className="w-full text-sm px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 shadow-sm transition-all"
+                      />
+                    </div>
+                    <div>
+                      <input
+                        type="password"
+                        required
+                        minLength={6}
+                        value={confirmNewPassword}
+                        onChange={(e) => setConfirmNewPassword(e.target.value)}
+                        placeholder="Confirm New Password"
+                        className="w-full text-sm px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 shadow-sm transition-all"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-xl shadow-lg shadow-emerald-900/20 transition-all transform active:scale-[0.98] disabled:opacity-50"
+                    >
+                      {loading ? "Updating..." : "Update Password"}
+                    </button>
+                    <div className="text-center pt-2">
+                      <button
+                        type="button"
+                        onClick={() => { setResetStep(1); setError(null); }}
+                        className="text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 font-semibold"
+                      >
+                        ← Change Email
+                      </button>
+                    </div>
+                  </form>
+                </div>
               )}
             </div>
           ) : (

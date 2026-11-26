@@ -12,7 +12,7 @@ from psycopg2.extras import RealDictCursor
 from database import get_db_connection, init_db
 from models import (
     TaskCreate, TaskUpdate, TaskResponse,
-    UserRegister, UserLogin, ForgotPasswordRequest, GoogleAuthRequest, SocialAuthRequest, UserResponse, AuthResponse
+    UserRegister, UserLogin, ForgotPasswordRequest, ResetPasswordRequest, GoogleAuthRequest, SocialAuthRequest, UserResponse, AuthResponse
 )
 from auth import (
     hash_password, verify_password, create_access_token,
@@ -156,7 +156,8 @@ def forgot_password(payload: ForgotPasswordRequest):
     if not email or "@" not in email:
         raise HTTPException(status_code=400, detail="A valid email address is required.")
     
-    # Check if user exists in database to confirm validity
+    # Check if user exists in database
+    user_row = None
     try:
         conn = get_db_connection()
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -166,9 +167,40 @@ def forgot_password(payload: ForgotPasswordRequest):
     except Exception as e:
         print(f"Warning during forgot password verification: {e}")
 
+    if not user_row:
+        raise HTTPException(status_code=404, detail="No registered account found with this email.")
+
     return {
-        "message": f"If an account is associated with {email}, password reset instructions have been sent to your inbox."
+        "success": True,
+        "email": email,
+        "message": f"Account verified for {email}. Please set your new password below."
     }
+
+@router.post("/auth/reset-password", tags=["Authentication"])
+def reset_password(payload: ResetPasswordRequest):
+    email = payload.email.strip().lower()
+    new_pwd = payload.new_password
+    if not new_pwd or len(new_pwd) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
+    
+    new_hash = hash_password(new_pwd)
+    try:
+        conn = get_db_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT id FROM users WHERE email = %s;", (email,))
+            user = cur.fetchone()
+            if not user:
+                conn.close()
+                raise HTTPException(status_code=404, detail="No account found with this email address.")
+            
+            cur.execute("UPDATE users SET password_hash = %s WHERE email = %s;", (new_hash, email))
+            conn.commit()
+        conn.close()
+        return {"success": True, "message": "Password updated successfully! You can now sign in with your new password."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to reset password: {str(e)}")
 
 @router.post("/auth/social", response_model=AuthResponse, tags=["Authentication"])
 def social_auth(payload: SocialAuthRequest):
