@@ -275,13 +275,22 @@
       });
       const [authToken, setAuthToken] = useState(() => localStorage.getItem("pulsetask_token") || "");
       const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+      const isProcessingUserRef = useRef(false);
       const [isAuthProcessing, setIsAuthProcessing] = useState(() => {
+        try {
+          if (sessionStorage.getItem("pulsetask_clerk_oauth_in_progress") === "true") {
+            return true;
+          }
+        } catch (_) {}
         const search = window.location.search || "";
         const hash = window.location.hash || "";
-        return search.includes("__clerk") || 
+        return search.includes("code=") ||
+               search.includes("state=") ||
+               search.includes("__clerk") || 
                hash.includes("__clerk") || 
                search.includes("status=complete") || 
-               search.includes("oauth_token");
+               search.includes("oauth_token") ||
+               search.includes("rotating_token_nonce");
       });
       const [authMode, setAuthMode] = useState("login"); // 'login' | 'register'
 
@@ -391,7 +400,10 @@
         let isMounted = true;
 
         const processUser = async (u) => {
-          if (!u || !isMounted) return;
+          if (!u || !isMounted || isProcessingUserRef.current) return;
+          isProcessingUserRef.current = true;
+          try { sessionStorage.removeItem("pulsetask_clerk_oauth_in_progress"); } catch (_) {}
+
           const userEmail = (
             u.primaryEmailAddress ? u.primaryEmailAddress.emailAddress : 
             (u.emailAddresses && u.emailAddresses[0] ? u.emailAddresses[0].emailAddress : "")
@@ -400,7 +412,10 @@
           const userName = u.fullName || u.firstName || (userEmail ? userEmail.split("@")[0] : "Google User");
           const userPic = u.imageUrl || "";
 
-          if (!userEmail) return;
+          if (!userEmail) {
+            isProcessingUserRef.current = false;
+            return;
+          }
 
           try {
             const res = await fetch(`${API_BASE}/auth/social`, {
@@ -426,9 +441,12 @@
               if (window.history && window.history.replaceState) {
                 window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
               }
+            } else {
+              isProcessingUserRef.current = false;
             }
           } catch (fetchErr) {
             console.error("Failed to sync user with Neon backend:", fetchErr);
+            isProcessingUserRef.current = false;
             setIsAuthProcessing(false);
           }
         };
@@ -449,29 +467,65 @@
             // Handle Clerk OAuth redirect callback if parameters present
             const search = window.location.search || "";
             const hash = window.location.hash || "";
-            const hasAuthParams = search.includes("__clerk") || hash.includes("__clerk") || search.includes("status=complete") || search.includes("oauth_token");
+            const hasAuthParams = search.includes("code=") ||
+                                  search.includes("state=") ||
+                                  search.includes("__clerk") || 
+                                  hash.includes("__clerk") || 
+                                  search.includes("status=") || 
+                                  search.includes("rotating_token_nonce");
 
             if (hasAuthParams && window.Clerk.handleRedirectCallback) {
               try {
-                await window.Clerk.handleRedirectCallback({
-                  customNavigate: async (to) => {
-                    // Prevent page reload so React state & async context are preserved!
+                // Correct 2-argument signature: handleRedirectCallback(options, customNavigate)
+                await window.Clerk.handleRedirectCallback(
+                  {
+                    signInFallbackRedirectUrl: window.location.origin + window.location.pathname,
+                    signUpFallbackRedirectUrl: window.location.origin + window.location.pathname,
+                    afterSignInUrl: window.location.origin + window.location.pathname,
+                    afterSignUpUrl: window.location.origin + window.location.pathname,
+                    continueSignUpUrl: window.location.origin + window.location.pathname,
+                  },
+                  async (to) => {
+                    // Prevent destructive full-page reload
                     if (window.history && window.history.replaceState) {
-                      window.history.replaceState({}, document.title, to || (window.location.origin + window.location.pathname));
+                      window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
                     }
                   }
-                });
+                );
               } catch (cbErr) {
                 console.warn("Clerk callback notice:", cbErr);
               }
             }
 
-            // Active polling loop for up to 6 seconds to capture hydrated Clerk user session
-            for (let attempt = 0; attempt < 30; attempt++) {
+            // If Clerk has client sessions but no active session, activate it!
+            if (!window.Clerk.session && window.Clerk.client) {
+              const client = window.Clerk.client;
+              const pendingSessionId = 
+                (client.signIn && client.signIn.createdSessionId) ||
+                (client.signUp && client.signUp.createdSessionId) ||
+                (client.sessions && client.sessions[0] && client.sessions[0].id);
+
+              if (pendingSessionId && window.Clerk.setActive) {
+                try {
+                  await window.Clerk.setActive({ session: pendingSessionId });
+                } catch (actErr) {
+                  console.warn("Clerk setActive notice:", actErr);
+                }
+              }
+            }
+
+            // Active polling loop for up to 8 seconds to capture hydrated Clerk user session
+            for (let attempt = 0; attempt < 40; attempt++) {
               const activeUser = window.Clerk.user || (window.Clerk.session && window.Clerk.session.user);
               if (activeUser) {
                 await processUser(activeUser);
                 break;
+              }
+              // If still no session, check client.sessions again
+              if (!window.Clerk.session && window.Clerk.client && window.Clerk.client.sessions && window.Clerk.client.sessions.length > 0) {
+                try {
+                  await window.Clerk.setActive({ session: window.Clerk.client.sessions[0].id });
+                } catch (_) {}
               }
               await new Promise(r => setTimeout(r, 200));
             }
@@ -487,7 +541,13 @@
             }
           } catch (e) {
             console.error("Clerk sync error:", e);
-            setIsAuthProcessing(false);
+          } finally {
+            try { sessionStorage.removeItem("pulsetask_clerk_oauth_in_progress"); } catch (_) {}
+            setTimeout(() => {
+              if (isMounted && !localStorage.getItem("pulsetask_token")) {
+                setIsAuthProcessing(false);
+              }
+            }, 1000);
           }
         };
 
@@ -1727,6 +1787,10 @@
         setLoading(true);
         setError(null);
         try {
+          try {
+            sessionStorage.setItem("pulsetask_clerk_oauth_in_progress", "true");
+          } catch (_) {}
+
           for (let i = 0; i < 35; i++) {
             if (window.Clerk) break;
             await new Promise(r => setTimeout(r, 100));
@@ -1749,11 +1813,12 @@
             oidcPrompt: "select_account",
           };
 
-          if (window.Clerk.authenticateWithRedirect) {
+          if (window.Clerk.client && window.Clerk.client.signIn) {
+            await window.Clerk.client.signIn.authenticateWithRedirect(redirectOptions);
+          } else if (window.Clerk.authenticateWithRedirect) {
             await window.Clerk.authenticateWithRedirect(redirectOptions);
-          } else if (window.Clerk.client && (window.Clerk.client.signIn || window.Clerk.client.signUp)) {
-            const handler = window.Clerk.client.signIn || window.Clerk.client.signUp;
-            await handler.authenticateWithRedirect(redirectOptions);
+          } else if (window.Clerk.client && window.Clerk.client.signUp) {
+            await window.Clerk.client.signUp.authenticateWithRedirect(redirectOptions);
           } else if (window.Clerk.openSignIn) {
             window.Clerk.openSignIn();
             setLoading(false);
@@ -1763,6 +1828,7 @@
         } catch (err) {
           console.error("Clerk Google Sign-In error:", err);
           setError(err.message || "Failed to launch Google Sign-In with Clerk.");
+          try { sessionStorage.removeItem("pulsetask_clerk_oauth_in_progress"); } catch (_) {}
           setLoading(false);
         }
       };
