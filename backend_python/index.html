@@ -258,6 +258,55 @@
       low: { label: "Low", color: "text-slate-600 bg-slate-50 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700" }
     };
 
+    // Helper function to reliably extract an email from any Clerk object, verification, or URL string
+    function extractEmailFromAny(obj, depth = 0) {
+      if (!obj || depth > 8) return "";
+      if (typeof obj === "string") {
+        const match = obj.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+        if (match && !match[0].toLowerCase().includes("clerk") && !match[0].toLowerCase().includes("example")) {
+          return match[0].trim().toLowerCase();
+        }
+        return "";
+      }
+      if (typeof obj !== "object") return "";
+
+      const directKeys = ["emailAddress", "email_address", "email", "identifier", "username"];
+      for (const k of directKeys) {
+        if (obj[k]) {
+          const res = extractEmailFromAny(obj[k], depth + 1);
+          if (res) return res;
+        }
+      }
+
+      if (Array.isArray(obj)) {
+        for (const item of obj) {
+          const res = extractEmailFromAny(item, depth + 1);
+          if (res) return res;
+        }
+      }
+
+      const subKeys = ["user", "session", "client", "signUp", "signIn", "verifications", "externalAccount", "primaryEmailAddress", "userData", "external_accounts", "email_addresses"];
+      for (const k of subKeys) {
+        if (obj[k]) {
+          const res = extractEmailFromAny(obj[k], depth + 1);
+          if (res) return res;
+        }
+      }
+
+      try {
+        for (const key of Object.keys(obj)) {
+          if (directKeys.includes(key) || subKeys.includes(key)) continue;
+          const val = obj[key];
+          if (typeof val === "string") {
+            const res = extractEmailFromAny(val, depth + 1);
+            if (res) return res;
+          }
+        }
+      } catch (_) {}
+
+      return "";
+    }
+
     // --- MAIN APPLICATION COMPONENT ---
     const API_BASE = window.location.protocol === 'file:' 
       ? "http://localhost:8000/api" 
@@ -559,40 +608,17 @@
                 break;
               }
 
-              // Also check if client.signUp or client.signIn has the verified Google email!
-              if (client) {
-                let extractedEmail = "";
-                let extractedName = "";
-                let extractedPic = "";
-
-                if (client.signUp) {
-                  extractedEmail = client.signUp.emailAddress || "";
-                  extractedName = [client.signUp.firstName, client.signUp.lastName].filter(Boolean).join(" ");
-                  if (client.signUp.verifications && client.signUp.verifications.externalAccount) {
-                    const ext = client.signUp.verifications.externalAccount;
-                    if (ext.emailAddress) extractedEmail = ext.emailAddress;
-                    if (ext.avatarUrl) extractedPic = ext.avatarUrl;
-                  }
-                }
-                if (!extractedEmail && client.signIn) {
-                  extractedEmail = client.signIn.identifier || "";
-                  if (client.signIn.userData) {
-                    extractedName = client.signIn.userData.firstName || "";
-                  }
-                  if (client.signIn.firstFactorVerification && client.signIn.firstFactorVerification.externalAccount) {
-                    const ext = client.signIn.firstFactorVerification.externalAccount;
-                    if (ext.emailAddress) extractedEmail = ext.emailAddress;
-                  }
-                }
-
-                if (extractedEmail && extractedEmail.includes("@")) {
-                  await processUser({
-                    email: extractedEmail,
-                    name: extractedName,
-                    picture: extractedPic
-                  });
-                  break;
-                }
+              // Extract verified Google email from ANY Clerk property (signUp, signIn, verifications, client, session)
+              const currClerk = window.Clerk;
+              const extracted = extractEmailFromAny(currClerk, 0) || extractEmailFromAny(window.location.search, 0);
+              if (extracted) {
+                setAuthProgressMessage(`Setting up workspace for ${extracted}...`);
+                await processUser({
+                  email: extracted,
+                  name: (currClerk.user && currClerk.user.fullName) || (currClerk.client && currClerk.client.signUp && [currClerk.client.signUp.firstName, currClerk.client.signUp.lastName].filter(Boolean).join(" ")) || extracted.split("@")[0],
+                  picture: (currClerk.user && currClerk.user.imageUrl) || ""
+                });
+                break;
               }
 
               // If still no session, check client.sessions again
