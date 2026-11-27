@@ -63,7 +63,14 @@
   <!-- Canvas Confetti for task completion celebration -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 
-  <!-- PulseTask Native Google Identity Flow (Zero External Dependencies, No Redirect Loops) -->
+  <!-- Official Clerk Authentication SDK for Real Google Sign-In -->
+  <script
+    async
+    crossorigin="anonymous"
+    data-clerk-publishable-key="pk_test_c2V0dGxpbmctdGFkcG9sZS05NzcyLmNsZXJrLmFjY291bnRzLmRldiQ"
+    src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
+    type="text/javascript"
+  ></script>
 
   <style>
     body {
@@ -268,7 +275,14 @@
       });
       const [authToken, setAuthToken] = useState(() => localStorage.getItem("pulsetask_token") || "");
       const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-      const [isAuthProcessing, setIsAuthProcessing] = useState(false);
+      const [isAuthProcessing, setIsAuthProcessing] = useState(() => {
+        const search = window.location.search || "";
+        const hash = window.location.hash || "";
+        return search.includes("__clerk") || 
+               hash.includes("__clerk") || 
+               search.includes("status=complete") || 
+               search.includes("oauth_token");
+      });
       const [authMode, setAuthMode] = useState("login"); // 'login' | 'register'
 
       // Helper for authenticated requests
@@ -360,7 +374,10 @@
         showToast(`Welcome back, ${data.user.name || data.user.email}!`);
       };
 
-      const handleLogout = () => {
+      const handleLogout = async () => {
+        if (window.Clerk && window.Clerk.user) {
+          try { await window.Clerk.signOut(); } catch (e) { console.warn("Clerk signout notice:", e); }
+        }
         localStorage.removeItem("pulsetask_token");
         localStorage.removeItem("pulsetask_user");
         setAuthToken("");
@@ -369,12 +386,105 @@
         showToast("Signed out. Switched to Public Demo Mode.");
       };
 
-      // Check for existing valid session on mount
+      // Real Google Sign-In Listener via Clerk & Neon PostgreSQL Sync
       useEffect(() => {
-        const token = localStorage.getItem("pulsetask_token");
-        if (token) {
-          fetchNeonData(token);
-        }
+        let isMounted = true;
+
+        const processUser = async (u) => {
+          if (!u || !isMounted) return;
+          const userEmail = (
+            u.primaryEmailAddress ? u.primaryEmailAddress.emailAddress : 
+            (u.emailAddresses && u.emailAddresses[0] ? u.emailAddresses[0].emailAddress : "")
+          ).trim().toLowerCase();
+
+          const userName = u.fullName || u.firstName || (userEmail ? userEmail.split("@")[0] : "Google User");
+          const userPic = u.imageUrl || "";
+
+          if (!userEmail) return;
+
+          try {
+            const res = await fetch(`${API_BASE}/auth/social`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                provider: "google",
+                email: userEmail,
+                name: userName,
+                picture: userPic
+              })
+            });
+            const data = await res.json();
+            if (res.ok && data.token && isMounted) {
+              localStorage.setItem("pulsetask_token", data.token);
+              localStorage.setItem("pulsetask_user", JSON.stringify(data.user));
+              setAuthToken(data.token);
+              setCurrentUser(data.user);
+              setIsAuthProcessing(false);
+              setIsAuthModalOpen(false);
+              fetchNeonData(data.token);
+              showToast(`Welcome back, ${data.user.name || "User"}! Signed in with Google.`);
+              if (window.history && window.history.replaceState) {
+                window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
+              }
+            }
+          } catch (fetchErr) {
+            console.error("Failed to sync user with Neon backend:", fetchErr);
+            setIsAuthProcessing(false);
+          }
+        };
+
+        const syncClerk = async () => {
+          try {
+            // Wait for Clerk instance to be defined
+            for (let i = 0; i < 40; i++) {
+              if (window.Clerk) break;
+              await new Promise(r => setTimeout(r, 100));
+            }
+            if (!window.Clerk || !isMounted) return;
+
+            if (!window.Clerk.loaded) {
+              await window.Clerk.load();
+            }
+
+            // Handle Clerk OAuth redirect callback if parameters present
+            const search = window.location.search || "";
+            const hash = window.location.hash || "";
+            const hasAuthParams = search.includes("__clerk") || hash.includes("__clerk") || search.includes("status=complete") || search.includes("oauth_token");
+
+            if (hasAuthParams && window.Clerk.handleRedirectCallback) {
+              try {
+                await window.Clerk.handleRedirectCallback({
+                  afterSignInUrl: window.location.origin + window.location.pathname,
+                  afterSignUpUrl: window.location.origin + window.location.pathname,
+                });
+              } catch (cbErr) {
+                console.warn("Clerk callback notice:", cbErr);
+              }
+            }
+
+            // Check if active user already exists
+            const immediateUser = window.Clerk.user || (window.Clerk.session && window.Clerk.session.user);
+            if (immediateUser) {
+              await processUser(immediateUser);
+            }
+
+            // Register listener for auth state updates
+            if (window.Clerk.addListener) {
+              window.Clerk.addListener(async (emission) => {
+                const u = (emission && emission.user) || (emission && emission.session && emission.session.user);
+                if (u) {
+                  await processUser(u);
+                }
+              });
+            }
+          } catch (e) {
+            console.error("Clerk sync error:", e);
+            setIsAuthProcessing(false);
+          }
+        };
+
+        syncClerk();
+        return () => { isMounted = false; };
       }, []);
 
       // Save to localStorage as backup
@@ -1605,72 +1715,48 @@
         }
       };
 
-      const [googleAccounts, setGoogleAccounts] = useState(() => {
-        try {
-          const cached = localStorage.getItem("pulsetask_google_accounts");
-          if (cached) return JSON.parse(cached);
-        } catch (e) {}
-        return [
-          {
-            name: "Veerendra G",
-            email: "gandlaveerendra1234@gmail.com",
-            avatar: "https://lh3.googleusercontent.com/a/default-user"
-          }
-        ];
-      });
-      const [isAddingOtherAccount, setIsAddingOtherAccount] = useState(false);
-      const [otherEmail, setOtherEmail] = useState("");
-      const [otherName, setOtherName] = useState("");
-
-      const handleSelectGoogleAccount = async (account) => {
+      const handleGoogleSignInWithClerk = async () => {
         setLoading(true);
         setError(null);
         try {
-          const res = await fetch(`${API_BASE}/auth/social`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              provider: "google",
-              email: account.email.trim().toLowerCase(),
-              name: account.name || account.email.split("@")[0],
-              picture: account.avatar || ""
-            })
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.detail || "Google authentication failed");
+          for (let i = 0; i < 35; i++) {
+            if (window.Clerk) break;
+            await new Promise(r => setTimeout(r, 100));
+          }
+          if (!window.Clerk) {
+            throw new Error("Clerk authentication is initializing. Please wait a moment and try again.");
+          }
+          if (!window.Clerk.loaded) {
+            await window.Clerk.load();
+          }
 
-          try {
-            const updated = [
-              account,
-              ...googleAccounts.filter(a => a.email.toLowerCase() !== account.email.toLowerCase())
-            ];
-            localStorage.setItem("pulsetask_google_accounts", JSON.stringify(updated));
-            setGoogleAccounts(updated);
-          } catch (e) {}
+          const targetUrl = window.location.origin + window.location.pathname;
+          const redirectOptions = {
+            strategy: "oauth_google",
+            redirectUrl: targetUrl,
+            redirectUrlComplete: targetUrl,
+            afterSignInUrl: targetUrl,
+            afterSignUpUrl: targetUrl,
+            continueSignUp: true,
+            oidcPrompt: "select_account",
+          };
 
-          onAuthSuccess(data);
-          if (!isMandatory && onClose) onClose();
+          if (window.Clerk.authenticateWithRedirect) {
+            await window.Clerk.authenticateWithRedirect(redirectOptions);
+          } else if (window.Clerk.client && (window.Clerk.client.signIn || window.Clerk.client.signUp)) {
+            const handler = window.Clerk.client.signIn || window.Clerk.client.signUp;
+            await handler.authenticateWithRedirect(redirectOptions);
+          } else if (window.Clerk.openSignIn) {
+            window.Clerk.openSignIn();
+            setLoading(false);
+          } else {
+            throw new Error("Unable to launch Google authentication redirect.");
+          }
         } catch (err) {
-          setError(err.message || "Failed to sign in. Please try again.");
-        } finally {
+          console.error("Clerk Google Sign-In error:", err);
+          setError(err.message || "Failed to launch Google Sign-In with Clerk.");
           setLoading(false);
         }
-      };
-
-      const handleAddOtherAccountSubmit = (e) => {
-        e.preventDefault();
-        const trimmed = otherEmail.trim().toLowerCase();
-        if (!EMAIL_REGEX.test(trimmed)) {
-          setError("Please enter a valid, complete email address (e.g. name@gmail.com).");
-          return;
-        }
-        const derivedName = otherName.trim() || trimmed.split("@")[0].replace(/[._-]/g, " ");
-        const formattedName = derivedName.charAt(0).toUpperCase() + derivedName.slice(1);
-        handleSelectGoogleAccount({
-          name: formattedName,
-          email: trimmed,
-          avatar: ""
-        });
       };
 
       const card = (
@@ -1704,9 +1790,9 @@
             </div>
           )}
 
-          {/* PULSETASK NATIVE GOOGLE ACCOUNT CHOOSER */}
+          {/* REAL GOOGLE SIGN-IN VIA CLERK */}
           {mode === "google" ? (
-            <div className="space-y-4">
+            <div className="space-y-5">
               {/* Google Brand Top Bar */}
               <div className="flex items-center space-x-2 pb-3 border-b border-slate-100 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300 font-medium">
                 <GoogleIcon className="w-4 h-4 flex-shrink-0" />
@@ -1714,123 +1800,43 @@
               </div>
 
               {/* Header: App Icon & Heading */}
-              <div className="text-center pt-1 pb-1">
-                <div className="inline-flex items-center justify-center w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/20 mb-2.5">
-                  <span className="font-bold text-lg">P</span>
+              <div className="text-center pt-2 pb-1">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/20 mb-3">
+                  <GoogleIcon className="w-6 h-6" />
                 </div>
                 <h3 className="text-xl font-bold text-slate-800 dark:text-white">
-                  Choose an account
+                  Sign in with Google
                 </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  to continue to <span className="font-semibold text-blue-600 dark:text-blue-400">PulseTask</span>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
+                  Choose your Google account on <span className="font-semibold text-blue-600 dark:text-blue-400">accounts.google.com</span> to continue to PulseTask SaaS
                 </p>
               </div>
 
-              {/* List of Accounts */}
-              {!isAddingOtherAccount ? (
-                <div className="space-y-2 pt-2">
-                  {googleAccounts.map((acc, idx) => (
-                    <button
-                      key={acc.email + idx}
-                      type="button"
-                      disabled={loading}
-                      onClick={() => handleSelectGoogleAccount(acc)}
-                      className="w-full p-3.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/70 dark:hover:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 text-left transition-all flex items-center space-x-3.5 group active:scale-[0.99] disabled:opacity-50"
-                    >
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow flex-shrink-0">
-                        {acc.name ? acc.name.charAt(0).toUpperCase() : acc.email.charAt(0).toUpperCase()}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-sm text-slate-800 dark:text-white truncate">
-                          {acc.name || "Google User"}
-                        </div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                          {acc.email}
-                        </div>
-                      </div>
-                      <div className="text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      </div>
-                    </button>
-                  ))}
+              {/* Primary Action Button: Continue with Google */}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={handleGoogleSignInWithClerk}
+                  className="w-full py-4 px-4 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-900 dark:text-white text-sm font-semibold rounded-2xl border-2 border-slate-200 dark:border-slate-700 shadow-md hover:shadow-lg transition-all flex items-center justify-center space-x-3 group active:scale-[0.98] disabled:opacity-50"
+                >
+                  <GoogleIcon className="w-5 h-5 flex-shrink-0 group-hover:scale-110 transition-transform" />
+                  <span>{loading ? "Connecting to Google..." : "Continue with Google"}</span>
+                </button>
+              </div>
 
-                  {/* Use another account option */}
-                  <button
-                    type="button"
-                    disabled={loading}
-                    onClick={() => { setIsAddingOtherAccount(true); setError(null); }}
-                    className="w-full p-3.5 bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 text-left transition-all flex items-center space-x-3.5 text-slate-700 dark:text-slate-300 group"
-                  >
-                    <div className="w-10 h-10 rounded-full border border-slate-300 dark:border-slate-600 flex items-center justify-center text-slate-500 dark:text-slate-400 flex-shrink-0 group-hover:border-blue-500 group-hover:text-blue-500 transition-colors">
-                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                      </svg>
-                    </div>
-                    <div className="flex-1">
-                      <div className="font-semibold text-sm">Use another account</div>
-                      <div className="text-[11px] text-slate-400">Sign in with a different Google email</div>
-                    </div>
-                  </button>
-                </div>
-              ) : (
-                /* Use another account form */
-                <form onSubmit={handleAddOtherAccountSubmit} className="space-y-3 pt-2">
-                  <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Sign in with another Google Account:
-                  </div>
-                  <div>
-                    <input
-                      type="email"
-                      required
-                      autoFocus
-                      value={otherEmail}
-                      onChange={(e) => setOtherEmail(e.target.value)}
-                      placeholder="Enter Google email (e.g. name@gmail.com)"
-                      className="w-full text-sm px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40"
-                    />
-                  </div>
-                  <div>
-                    <input
-                      type="text"
-                      value={otherName}
-                      onChange={(e) => setOtherName(e.target.value)}
-                      placeholder="Your full name (optional)"
-                      className="w-full text-sm px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40"
-                    />
-                  </div>
-                  <div className="flex items-center space-x-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => { setIsAddingOtherAccount(false); setError(null); }}
-                      className="flex-1 py-3 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-xl transition-all"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className="flex-1 py-3 px-3 bg-[#1e3a8a] hover:bg-[#172554] text-white text-xs font-semibold rounded-xl shadow transition-all disabled:opacity-50"
-                    >
-                      {loading ? "Connecting..." : "Continue"}
-                    </button>
-                  </div>
-                </form>
-              )}
-
-              {/* Privacy Notice */}
-              <div className="pt-2 text-center">
-                <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
-                  Before using this app, you can review the PulseTask Privacy Policy and Terms of Service.
+              {/* Security Note */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl text-center">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  🔒 Official Google OAuth handled securely by Clerk. Choose any active Google account from your device.
                 </p>
               </div>
 
-              {/* Back to standard login */}
+              {/* Back button */}
               <div className="pt-2 border-t border-slate-100 dark:border-slate-800 text-center">
                 <button
                   type="button"
-                  onClick={() => { setMode("login"); setIsAddingOtherAccount(false); setError(null); }}
+                  onClick={() => { setMode("login"); setError(null); }}
                   className="text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 font-semibold"
                 >
                   ← Back to standard Sign in
@@ -1953,7 +1959,7 @@
                 <button
                   type="button"
                   disabled={loading}
-                  onClick={() => { setMode("google"); setIsAddingOtherAccount(false); setError(null); }}
+                  onClick={handleGoogleSignInWithClerk}
                   className="w-full py-3.5 px-4 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-slate-800 dark:text-white text-sm font-semibold rounded-2xl border-2 border-slate-200 dark:border-slate-700 shadow-sm hover:shadow transition-all flex items-center justify-center space-x-3 group active:scale-[0.98] disabled:opacity-50"
                 >
                   <GoogleIcon className="w-5 h-5 flex-shrink-0 group-hover:scale-110 transition-transform" />
