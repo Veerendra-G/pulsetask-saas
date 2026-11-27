@@ -293,6 +293,7 @@
                search.includes("rotating_token_nonce");
       });
       const [authMode, setAuthMode] = useState("login"); // 'login' | 'register'
+      const [authProgressMessage, setAuthProgressMessage] = useState("Authenticating your Google account and opening your private workspace...");
 
       // Helper for authenticated requests
       const getAuthHeaders = (tokenOverride) => {
@@ -405,17 +406,21 @@
           try { sessionStorage.removeItem("pulsetask_clerk_oauth_in_progress"); } catch (_) {}
 
           const userEmail = (
-            u.primaryEmailAddress ? u.primaryEmailAddress.emailAddress : 
-            (u.emailAddresses && u.emailAddresses[0] ? u.emailAddresses[0].emailAddress : "")
+            typeof u === "string" ? u :
+            u.email ||
+            (u.primaryEmailAddress ? u.primaryEmailAddress.emailAddress : 
+            (u.emailAddresses && u.emailAddresses[0] ? u.emailAddresses[0].emailAddress : ""))
           ).trim().toLowerCase();
 
-          const userName = u.fullName || u.firstName || (userEmail ? userEmail.split("@")[0] : "Google User");
-          const userPic = u.imageUrl || "";
+          const userName = u.name || u.fullName || u.firstName || (userEmail ? userEmail.split("@")[0] : "Google User");
+          const userPic = u.picture || u.imageUrl || "";
 
           if (!userEmail) {
             isProcessingUserRef.current = false;
             return;
           }
+
+          setAuthProgressMessage(`Setting up workspace for ${userEmail}...`);
 
           try {
             const res = await fetch(`${API_BASE}/auth/social`, {
@@ -443,16 +448,20 @@
               }
             } else {
               isProcessingUserRef.current = false;
+              setIsAuthProcessing(false);
+              showToast(data.detail || "Sign in failed with backend.");
             }
           } catch (fetchErr) {
             console.error("Failed to sync user with Neon backend:", fetchErr);
             isProcessingUserRef.current = false;
             setIsAuthProcessing(false);
+            showToast("Network error connecting to backend.");
           }
         };
 
         const syncClerk = async () => {
           try {
+            setAuthProgressMessage("Connecting to Clerk instance...");
             // Wait for Clerk instance to be defined
             for (let i = 0; i < 40; i++) {
               if (window.Clerk) break;
@@ -463,6 +472,8 @@
             if (!window.Clerk.loaded) {
               await window.Clerk.load();
             }
+
+            setAuthProgressMessage("Verifying Google account authorization...");
 
             // Handle Clerk OAuth redirect callback if parameters present
             const search = window.location.search || "";
@@ -497,9 +508,33 @@
               }
             }
 
-            // If Clerk has client sessions but no active session, activate it!
+            // Check if Clerk signUp has missing requirements (e.g. password required) and fulfill them
+            const client = window.Clerk.client;
+            if (client && client.signUp && client.signUp.status === "missing_requirements") {
+              try {
+                const updatePayload = {};
+                if (client.signUp.missingFields && client.signUp.missingFields.includes("password")) {
+                  updatePayload.password = "PulseTaskOauth@" + Math.floor(Math.random() * 100000);
+                }
+                if (client.signUp.missingFields && client.signUp.missingFields.includes("first_name") && !client.signUp.firstName) {
+                  updatePayload.firstName = "User";
+                }
+                if (client.signUp.missingFields && client.signUp.missingFields.includes("last_name") && !client.signUp.lastName) {
+                  updatePayload.lastName = "Account";
+                }
+                if (Object.keys(updatePayload).length > 0) {
+                  const updated = await client.signUp.update(updatePayload);
+                  if (updated.status === "complete" && updated.createdSessionId && window.Clerk.setActive) {
+                    await window.Clerk.setActive({ session: updated.createdSessionId });
+                  }
+                }
+              } catch (upErr) {
+                console.warn("Clerk missing requirements auto-fulfillment notice:", upErr);
+              }
+            }
+
+            // If Clerk has client sessions or pending sessionId, activate it!
             if (!window.Clerk.session && window.Clerk.client) {
-              const client = window.Clerk.client;
               const pendingSessionId = 
                 (client.signIn && client.signIn.createdSessionId) ||
                 (client.signUp && client.signUp.createdSessionId) ||
@@ -514,13 +549,52 @@
               }
             }
 
-            // Active polling loop for up to 8 seconds to capture hydrated Clerk user session
+            // Active polling loop for up to 8 seconds to capture hydrated Clerk user session or verified email
             for (let attempt = 0; attempt < 40; attempt++) {
+              if (isProcessingUserRef.current) break;
+
               const activeUser = window.Clerk.user || (window.Clerk.session && window.Clerk.session.user);
               if (activeUser) {
                 await processUser(activeUser);
                 break;
               }
+
+              // Also check if client.signUp or client.signIn has the verified Google email!
+              if (client) {
+                let extractedEmail = "";
+                let extractedName = "";
+                let extractedPic = "";
+
+                if (client.signUp) {
+                  extractedEmail = client.signUp.emailAddress || "";
+                  extractedName = [client.signUp.firstName, client.signUp.lastName].filter(Boolean).join(" ");
+                  if (client.signUp.verifications && client.signUp.verifications.externalAccount) {
+                    const ext = client.signUp.verifications.externalAccount;
+                    if (ext.emailAddress) extractedEmail = ext.emailAddress;
+                    if (ext.avatarUrl) extractedPic = ext.avatarUrl;
+                  }
+                }
+                if (!extractedEmail && client.signIn) {
+                  extractedEmail = client.signIn.identifier || "";
+                  if (client.signIn.userData) {
+                    extractedName = client.signIn.userData.firstName || "";
+                  }
+                  if (client.signIn.firstFactorVerification && client.signIn.firstFactorVerification.externalAccount) {
+                    const ext = client.signIn.firstFactorVerification.externalAccount;
+                    if (ext.emailAddress) extractedEmail = ext.emailAddress;
+                  }
+                }
+
+                if (extractedEmail && extractedEmail.includes("@")) {
+                  await processUser({
+                    email: extractedEmail,
+                    name: extractedName,
+                    picture: extractedPic
+                  });
+                  break;
+                }
+              }
+
               // If still no session, check client.sessions again
               if (!window.Clerk.session && window.Clerk.client && window.Clerk.client.sessions && window.Clerk.client.sessions.length > 0) {
                 try {
@@ -544,8 +618,9 @@
           } finally {
             try { sessionStorage.removeItem("pulsetask_clerk_oauth_in_progress"); } catch (_) {}
             setTimeout(() => {
-              if (isMounted && !localStorage.getItem("pulsetask_token")) {
+              if (isMounted && !localStorage.getItem("pulsetask_token") && !isProcessingUserRef.current) {
                 setIsAuthProcessing(false);
+                showToast("Google sign in could not be verified. Please try again.");
               }
             }, 1000);
           }
@@ -771,7 +846,7 @@
             <div className="bg-white dark:bg-[#111827] rounded-3xl p-8 shadow-2xl text-center max-w-sm w-full border border-slate-200 dark:border-slate-800">
               <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
               <h3 className="text-lg font-bold text-slate-800 dark:text-white">Connecting with Google...</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">Authenticating your Google account and opening your private workspace...</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">{authProgressMessage}</p>
             </div>
           </div>
         );
