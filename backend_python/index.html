@@ -275,6 +275,14 @@
       });
       const [authToken, setAuthToken] = useState(() => localStorage.getItem("pulsetask_token") || "");
       const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+      const [isAuthProcessing, setIsAuthProcessing] = useState(() => {
+        const search = window.location.search || "";
+        const hash = window.location.hash || "";
+        return search.includes("__clerk") || 
+               hash.includes("__clerk") || 
+               search.includes("status=complete") || 
+               search.includes("oauth_token");
+      });
       const [authMode, setAuthMode] = useState("login"); // 'login' | 'register'
 
       // Helper for authenticated requests
@@ -403,23 +411,29 @@
             // Handle Clerk OAuth redirect callback if parameters present
             const search = window.location.search || "";
             const hash = window.location.hash || "";
-            if (search.includes("__clerk") || hash.includes("__clerk") || search.includes("status=complete") || search.includes("oauth_token")) {
-              if (window.Clerk.handleRedirectCallback) {
-                try {
-                  await window.Clerk.handleRedirectCallback({
-                    redirectUrlComplete: window.location.origin + window.location.pathname
-                  });
-                } catch (cbErr) {
-                  console.warn("Clerk redirect callback:", cbErr);
-                }
+            const hasAuthParams = search.includes("__clerk") || hash.includes("__clerk") || search.includes("status=complete") || search.includes("oauth_token");
+
+            if (hasAuthParams && window.Clerk.handleRedirectCallback) {
+              try {
+                await window.Clerk.handleRedirectCallback({
+                  redirectUrlComplete: window.location.origin + window.location.pathname,
+                  afterSignInUrl: window.location.origin + window.location.pathname,
+                  afterSignUpUrl: window.location.origin + window.location.pathname,
+                });
+              } catch (cbErr) {
+                console.warn("Clerk redirect callback notice:", cbErr);
               }
             }
 
             // Function to process user login and sync with Neon PostgreSQL
             const processUser = async (u) => {
               if (!u || !isMounted) return;
-              const userEmail = (u.primaryEmailAddress ? u.primaryEmailAddress.emailAddress : (u.emailAddresses?.[0]?.emailAddress || "")).trim().toLowerCase();
-              const userName = u.fullName || u.firstName || (userEmail.split("@")[0] || "Google User");
+              const userEmail = (
+                u.primaryEmailAddress ? u.primaryEmailAddress.emailAddress : 
+                (u.emailAddresses && u.emailAddresses[0] ? u.emailAddresses[0].emailAddress : "")
+              ).trim().toLowerCase();
+
+              const userName = u.fullName || u.firstName || (userEmail ? userEmail.split("@")[0] : "Google User");
               const userPic = u.imageUrl || "";
 
               if (!userEmail) return;
@@ -441,8 +455,9 @@
                   localStorage.setItem("pulsetask_user", JSON.stringify(data.user));
                   setAuthToken(data.token);
                   setCurrentUser(data.user);
-                  fetchNeonData(data.token);
+                  setIsAuthProcessing(false);
                   setIsAuthModalOpen(false);
+                  fetchNeonData(data.token);
                   showToast(`Welcome back, ${data.user.name || "User"}! Signed in with Google.`);
                   if (window.history && window.history.replaceState) {
                     window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
@@ -450,24 +465,33 @@
                 }
               } catch (fetchErr) {
                 console.error("Failed to sync user with Neon backend:", fetchErr);
+                setIsAuthProcessing(false);
               }
             };
 
-            // Check if user is already signed in
-            if (window.Clerk.user) {
-              await processUser(window.Clerk.user);
+            // Check if user or session is already available, with short retry loop
+            for (let attempt = 0; attempt < 25; attempt++) {
+              const activeUser = window.Clerk.user || (window.Clerk.session && window.Clerk.session.user);
+              if (activeUser) {
+                await processUser(activeUser);
+                break;
+              }
+              if (!hasAuthParams && attempt > 2) break;
+              await new Promise(r => setTimeout(r, 200));
             }
 
             // Attach listener so when OAuth callback finishes, processUser is triggered
             if (window.Clerk.addListener) {
               window.Clerk.addListener((emission) => {
-                if (emission && emission.user) {
-                  processUser(emission.user);
+                const u = (emission && emission.user) || (emission && emission.session && emission.session.user);
+                if (u) {
+                  processUser(u);
                 }
               });
             }
           } catch (e) {
             console.error("Clerk sync error:", e);
+            setIsAuthProcessing(false);
           }
         };
 
@@ -683,6 +707,19 @@
 
         return { total, completed, inProgress, todo, overdue, rate };
       }, [tasks]);
+
+      // SHOW LOADING SPINNER WHILE COMPLETING OAUTH HANDSHAKE
+      if (isAuthProcessing && !currentUser) {
+        return (
+          <div className="min-h-screen bg-slate-100 dark:bg-[#0b0f19] flex flex-col items-center justify-center p-4">
+            <div className="bg-white dark:bg-[#111827] rounded-3xl p-8 shadow-2xl text-center max-w-sm w-full border border-slate-200 dark:border-slate-800">
+              <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+              <h3 className="text-lg font-bold text-slate-800 dark:text-white">Connecting with Google...</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">Authenticating your Google account and opening your private workspace...</p>
+            </div>
+          </div>
+        );
+      }
 
       // MANDATORY LOGIN GATE: If user is not logged in, show login card directly!
       if (!currentUser) {
@@ -1715,19 +1752,21 @@
           const clerk = await ensureClerkInstance();
           const targetUrl = window.location.origin + window.location.pathname;
 
+          const redirectOptions = {
+            strategy: "oauth_google",
+            redirectUrl: targetUrl,
+            redirectUrlComplete: targetUrl,
+            afterSignInUrl: targetUrl,
+            afterSignUpUrl: targetUrl,
+            continueSignUp: true,
+            oidcPrompt: "select_account",
+          };
+
           if (clerk.authenticateWithRedirect) {
-            await clerk.authenticateWithRedirect({
-              strategy: "oauth_google",
-              redirectUrl: targetUrl,
-              redirectUrlComplete: targetUrl,
-            });
+            await clerk.authenticateWithRedirect(redirectOptions);
           } else if (clerk.client && (clerk.client.signIn || clerk.client.signUp)) {
             const handler = clerk.client.signIn || clerk.client.signUp;
-            await handler.authenticateWithRedirect({
-              strategy: "oauth_google",
-              redirectUrl: targetUrl,
-              redirectUrlComplete: targetUrl,
-            });
+            await handler.authenticateWithRedirect(redirectOptions);
           } else {
             throw new Error("Unable to launch Google authentication redirect.");
           }
