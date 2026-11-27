@@ -381,15 +381,20 @@
       // Real Google Sign-In Listener via Clerk
       useEffect(() => {
         let isMounted = true;
+        const pubKey = "pk_test_c2V0dGxpbmctdGFkcG9sZS05NzcyLmNsZXJrLmFjY291bnRzLmRldiQ";
+
         const syncClerkUser = async () => {
           try {
-            if (!window.Clerk) {
-              for (let i = 0; i < 30; i++) {
-                await new Promise(r => setTimeout(r, 150));
-                if (window.Clerk) break;
-              }
+            for (let i = 0; i < 40; i++) {
+              if (window.Clerk) break;
+              await new Promise(r => setTimeout(r, 100));
             }
             if (!window.Clerk || !isMounted) return;
+
+            // Ensure window.Clerk is instantiated
+            if (typeof window.Clerk === "function" && !window.Clerk.load) {
+              window.Clerk = new window.Clerk(pubKey);
+            }
 
             if (!window.Clerk.loaded) {
               await window.Clerk.load();
@@ -398,7 +403,7 @@
             // Handle Clerk OAuth redirect callback if parameters present
             const search = window.location.search || "";
             const hash = window.location.hash || "";
-            if (search.includes("__clerk") || hash.includes("__clerk") || search.includes("status=complete")) {
+            if (search.includes("__clerk") || hash.includes("__clerk") || search.includes("status=complete") || search.includes("oauth_token")) {
               if (window.Clerk.handleRedirectCallback) {
                 try {
                   await window.Clerk.handleRedirectCallback({
@@ -410,18 +415,16 @@
               }
             }
 
-            if (window.Clerk.user && isMounted) {
-              const u = window.Clerk.user;
+            // Function to process user login and sync with Neon PostgreSQL
+            const processUser = async (u) => {
+              if (!u || !isMounted) return;
               const userEmail = (u.primaryEmailAddress ? u.primaryEmailAddress.emailAddress : (u.emailAddresses?.[0]?.emailAddress || "")).trim().toLowerCase();
               const userName = u.fullName || u.firstName || (userEmail.split("@")[0] || "Google User");
               const userPic = u.imageUrl || "";
 
-              const storedToken = localStorage.getItem("pulsetask_token");
-              const storedUserStr = localStorage.getItem("pulsetask_user");
-              const currentEmail = storedUserStr ? JSON.parse(storedUserStr).email : "";
+              if (!userEmail) return;
 
-              if (userEmail && (!storedToken || currentEmail !== userEmail)) {
-                // Sync user with PulseTask FastAPI & Neon PostgreSQL
+              try {
                 const res = await fetch(`${API_BASE}/auth/social`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -433,7 +436,7 @@
                   })
                 });
                 const data = await res.json();
-                if (res.ok && data.token) {
+                if (res.ok && data.token && isMounted) {
                   localStorage.setItem("pulsetask_token", data.token);
                   localStorage.setItem("pulsetask_user", JSON.stringify(data.user));
                   setAuthToken(data.token);
@@ -445,10 +448,26 @@
                     window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
                   }
                 }
+              } catch (fetchErr) {
+                console.error("Failed to sync user with Neon backend:", fetchErr);
               }
+            };
+
+            // Check if user is already signed in
+            if (window.Clerk.user) {
+              await processUser(window.Clerk.user);
+            }
+
+            // Attach listener so when OAuth callback finishes, processUser is triggered
+            if (window.Clerk.addListener) {
+              window.Clerk.addListener((emission) => {
+                if (emission && emission.user) {
+                  processUser(emission.user);
+                }
+              });
             }
           } catch (e) {
-            console.warn("Clerk sync notice:", e);
+            console.error("Clerk sync error:", e);
           }
         };
 
