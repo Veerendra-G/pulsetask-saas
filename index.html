@@ -519,7 +519,18 @@
             if (!window.Clerk || !isMounted) return;
 
             if (!window.Clerk.loaded) {
-              await window.Clerk.load();
+              await window.Clerk.load({
+                allowedRedirectOrigins: [
+                  "https://pulsetask-saas-1zgj-seven.vercel.app",
+                  "http://localhost:3000",
+                  "http://localhost:8000",
+                  "http://localhost:5173",
+                  "http://127.0.0.1:3000",
+                  "http://127.0.0.1:8000",
+                  "http://127.0.0.1:5173",
+                  window.location.origin
+                ]
+              });
             }
 
             setAuthProgressMessage("Verifying Google account authorization...");
@@ -1910,7 +1921,18 @@
             throw new Error("Clerk authentication is initializing. Please wait a moment and try again.");
           }
           if (!window.Clerk.loaded) {
-            await window.Clerk.load();
+            await window.Clerk.load({
+              allowedRedirectOrigins: [
+                "https://pulsetask-saas-1zgj-seven.vercel.app",
+                "http://localhost:3000",
+                "http://localhost:8000",
+                "http://localhost:5173",
+                "http://127.0.0.1:3000",
+                "http://127.0.0.1:8000",
+                "http://127.0.0.1:5173",
+                window.location.origin
+              ]
+            });
           }
 
           const targetUrl = window.location.origin + window.location.pathname;
