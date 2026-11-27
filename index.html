@@ -454,24 +454,32 @@
             if (hasAuthParams && window.Clerk.handleRedirectCallback) {
               try {
                 await window.Clerk.handleRedirectCallback({
-                  afterSignInUrl: window.location.origin + window.location.pathname,
-                  afterSignUpUrl: window.location.origin + window.location.pathname,
+                  customNavigate: async (to) => {
+                    // Prevent page reload so React state & async context are preserved!
+                    if (window.history && window.history.replaceState) {
+                      window.history.replaceState({}, document.title, to || (window.location.origin + window.location.pathname));
+                    }
+                  }
                 });
               } catch (cbErr) {
                 console.warn("Clerk callback notice:", cbErr);
               }
             }
 
-            // Check if active user already exists
-            const immediateUser = window.Clerk.user || (window.Clerk.session && window.Clerk.session.user);
-            if (immediateUser) {
-              await processUser(immediateUser);
+            // Active polling loop for up to 6 seconds to capture hydrated Clerk user session
+            for (let attempt = 0; attempt < 30; attempt++) {
+              const activeUser = window.Clerk.user || (window.Clerk.session && window.Clerk.session.user);
+              if (activeUser) {
+                await processUser(activeUser);
+                break;
+              }
+              await new Promise(r => setTimeout(r, 200));
             }
 
             // Register listener for auth state updates
             if (window.Clerk.addListener) {
               window.Clerk.addListener(async (emission) => {
-                const u = (emission && emission.user) || (emission && emission.session && emission.session.user);
+                const u = (emission && emission.user) || (emission && emission.session && emission.session.user) || window.Clerk.user;
                 if (u) {
                   await processUser(u);
                 }
