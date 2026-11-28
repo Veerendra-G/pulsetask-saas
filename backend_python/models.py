@@ -74,3 +74,19 @@ class AuthResponse(BaseModel):
     token: str
     token_type: str = "bearer"
     user: UserResponse
+
+# --- AI Task Parsing Models ---
+class AIParseTaskRequest(BaseModel):
+    text: str = Field(..., min_length=1, description="Voice transcript or natural language task description")
+    currentDate: Optional[str] = Field(default=None, description="Current client date in YYYY-MM-DD")
+    existingProjects: Optional[List[str]] = Field(default_factory=list, description="Available projects / categories")
+    apiKey: Optional[str] = Field(default=None, description="Optional Gemini API key")
+
+class AIParseTaskResponse(BaseModel):
+    title: str
+    description: Optional[str] = ""
+    project: str = "Engineering"
+    priority: str = "medium"
+    dueDate: Optional[str] = None
+    tags: List[str] = []
+    source: str = "gemini" # 'gemini' or 'heuristic'
